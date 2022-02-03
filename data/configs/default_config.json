@@ -1,0 +1,7 @@
+{
+  "attention_heads": 8,
+  "attention_layers": 3,
+  "edge_hidden_feats": 32,
+  "node_out_feats": 256,
+  "num_step_message_passing": 3
+}
