@@ -25,14 +25,16 @@ def set_extractor(setting):
     REMOTE = setting['remote']
     return
 
-def mols_from_smiles_list(all_smiles):
+def mols_from_smiles_list(all_smiles, product_maps = []):
     '''Given a list of smiles strings, this function creates rdkit
     molecules'''
     mols = []
     for smiles in all_smiles:
         if not smiles: continue
-        mols.append(Chem.MolFromSmiles(smiles))
-    return mols
+        mol = Chem.MolFromSmiles(smiles)
+        [atom.SetAtomMapNum(0) for atom in mol.GetAtoms() if atom.GetAtomMapNum() not in product_maps]
+        mols.append(Chem.MolFromSmiles(Chem.MolToSmiles(mol)))
+    return sorted(mols, key= lambda m: m.GetNumAtoms(), reverse=True)
 
 def replace_deuterated(smi):
     return re.sub('\[2H\]', r'[H]', smi)
@@ -611,15 +613,15 @@ def bond_to_smarts(bond):
     
     return '{}{}{}'.format(atoms[0], bond_smarts, atoms[1])
 
-def extend_atom_tag(reactant, product_maps, max_num):
+
+def extend_atom_tag(reactant, max_num):
     untagged_neighbors = []
     is_reagent = True
     
     # clean atommap
     for atom in reactant.GetAtoms():
-        atom_map = atom.GetAtomMapNum()
-        if atom_map not in product_maps:
-            atom.SetAtomMapNum(0)
+        if atom.GetAtomMapNum() == 0:
+            pass
         else:
             is_reagent = False
     
@@ -644,15 +646,16 @@ def extract_from_reaction(reaction, setting = default_setting):
     set_extractor(setting)
     if type(reaction) == type('string'):
         reaction = {'reactants': reaction.split('>>')[0], 'products': reaction.split('>>')[1], '_id' : 0}
-    products = mols_from_smiles_list(replace_deuterated(reaction['products']).split('.'))
+        
     product_maps = [atom.GetAtomMapNum() for atom in Chem.MolFromSmiles(reaction['products']).GetAtoms()]
-    
-    reactants_ = mols_from_smiles_list(replace_deuterated(reaction['reactants']).split('.'))
-    max_num = max([atom.GetAtomMapNum() for atom in Chem.MolFromSmiles(reaction['reactants']).GetAtoms()])
+    products = mols_from_smiles_list(replace_deuterated(reaction['products']).split('.'), product_maps)
+    reactants_ = mols_from_smiles_list(replace_deuterated(reaction['reactants']).split('.'), product_maps)
+
+    max_num = max(product_maps)
     reagents = []
     reactants = []
     for reactant in reactants_:
-        is_reagent, max_num = extend_atom_tag(reactant, product_maps, max_num)
+        is_reagent, max_num = extend_atom_tag(reactant, max_num)
         if is_reagent:
             reagents.append(Chem.MolToSmiles(reactant))
         elif Chem.MolToSmiles(reactant) in reaction['products'].split('.'):

@@ -21,7 +21,7 @@ def pair_atom_feats(g, node_feats, etype):
     atom_pair_feats = torch.cat((node_feats[atom_pair_idx1], node_feats[atom_pair_idx2]), dim = 1)
     return atom_pair_feats
 
-def pack_feats(bg, atom_feats):
+def pack_atom_feats(bg, atom_feats):
     bg.ndata['h'] = atom_feats
     gs = dgl.unbatch(bg)
     edit_feats = [g.ndata['h'] for g in gs]
@@ -30,21 +30,18 @@ def pack_feats(bg, atom_feats):
     masks = pad_sequence(masks, batch_first=True, padding_value= 0)
     return padded_feats, masks
 
-def unpack_feats(bg, atom_feats):
+def unpack_atom_feats(bg, hg, atom_feats):
+    reactant_feats = []
     gs = dgl.unbatch(bg)
     atom_feats = [feats[:g.num_nodes()] for feats, g in zip(atom_feats, gs)]
-    return torch.cat(atom_feats, dim = 0)
-
-def get_reactant_feats(bg, hg, atom_feats):
-    reactant_feats = []
-    bg.ndata['h'] = atom_feats
+    bg.ndata['h'] = torch.cat(atom_feats, dim = 0)
     rgs = dgl.unbatch(bg)
     hgs = dgl.unbatch(hg)
     for rg, hg in zip(rgs, hgs):
         reactant_feats.append(rg.ndata['h'][:hg.num_nodes()])
     return torch.cat(reactant_feats, dim = 0)
    
-def reactive_group_pooling(hg, atom_feats, PoolingNet, etype):
+def reactive_pooling(hg, atom_feats, PoolingNet, etype):
     device = atom_feats.device
     react_outputs = []
     pool_feats = []
@@ -71,32 +68,6 @@ def reactive_group_pooling(hg, atom_feats, PoolingNet, etype):
     react_outputs = torch.cat(react_outputs, dim = 0)
     return react_outputs, pool_feats, top_idxs
 
-# def reactive_group_pooling(hg, atom_feats, PoolingNet, pooling_size, etype):
-#     device = atom_feats.device
-#     react_outputs = []
-#     pool_feats = []
-#     top_idxs = []
-#     hg.ndata['h'] = atom_feats
-#     gs = dgl.unbatch(hg)
-#     for g in gs:
-#         n_edges = g.num_edges(etype=etype)
-#         if n_edges == 0:
-#             pool_feats.append(torch.FloatTensor([]).to(device))
-#             top_idxs.append(torch.LongTensor([]).to(device))
-#             continue
-#         bond_feats = pair_atom_feats(g, g.ndata['h'], etype)
-#         react_output = PoolingNet(bond_feats)
-#         if n_edges < pooling_size:
-#             _, top_idx = torch.topk(react_output[:,1], n_edges)
-#         else:
-#             _, top_idx = torch.topk(react_output[:,1], pooling_size)
-#         react_outputs.append(react_output[top_idx])
-#         pool_feats.append(bond_feats[top_idx])
-#         top_idxs.append(top_idx)
-        
-#     react_outputs = torch.cat(react_outputs, dim = 0)
-#     return react_outputs, pool_feats, top_idxs
-
 def pack_bond_feats(feats_v, feats_r):
     edit_feats = [torch.cat([v, r], dim = 0) for v, r in zip(feats_v, feats_r)]
     masks = [torch.ones(len(feats), dtype=torch.uint8) for feats in edit_feats]
@@ -112,66 +83,6 @@ def unpack_bond_feats(edit_feats, vritual_idx, real_idx):
         feats_v.append(feats[:vn])
         feats_r.append(feats[vn:vn+rn])
     return torch.cat(feats_v, dim = 0), torch.cat(feats_r, dim = 0)
-    
-    
-def recursive_search(bond_dict, neighbors):
-    original_neightbors = copy.copy(neighbors)
-    for n in original_neightbors:
-        nsofn = copy.copy(bond_dict[n])
-        for nn in nsofn:
-            if nn in neighbors:
-                pass
-            else:
-                neighbors.add(nn)
-                neighbors = recursive_search(bond_dict, bond_dict[nn])
-    return neighbors
-
-def get_bondmatrix(hg, vritual_idx, real_idx):
-    bpms = []
-    max_size = max([len(vi) + len(ri) for vi, ri in zip(vritual_idx, real_idx)])
-    for g, vi, ri in zip(dgl.unbatch(hg), vritual_idx, real_idx):
-        real_bonds = torch.transpose(hg.adjacency_matrix(etype='real').coalesce().indices(), 0, 1)
-        pred_virtual = torch.transpose(hg.adjacency_matrix(etype='virtual').coalesce().indices(), 0, 1)[vi]
-        pred_real = real_bonds[ri]
-        bonds = torch.cat([pred_virtual, pred_real], dim = 0)
-        atom_connection = defaultdict(list)
-        matrix = torch.eye(max_size)
-   
-        for i, bond in enumerate(bonds):
-            atom_connection[bond[0].item()].append(i)
-            atom_connection[bond[1].item()].append(i)
-        
-        bond_connection = defaultdict(set)
-        for node, bond in atom_connection.items():
-            for connection in list(permutations(bond, 2)):
-                bond_connection[connection[0]].add(connection[1])
-                
-        for bond_idx in bond_connection.keys():
-            neighbors = recursive_search(bond_connection, bond_connection[bond_idx])
-            for n in neighbors:
-                if n != bond_idx:
-                    matrix[bond_idx][n] = 2
-                    
-        bpms.append(matrix.unsqueeze(0).long())
-    return torch.cat(bpms, dim = 0)
-
-# def get_bondmatrix(hg, vritual_idx, real_idx):
-#     bpms = []
-#     max_size = max([len(vi) + len(ri) for vi, ri in zip(vritual_idx, real_idx)])
-#     for g, vi, ri in zip(dgl.unbatch(hg), vritual_idx, real_idx):
-#         virtual_bonds = torch.transpose(hg.adjacency_matrix(etype='virtual').coalesce().indices(), 0, 1)[vi]
-#         real_bonds = torch.transpose(hg.adjacency_matrix(etype='real').coalesce().indices(), 0, 1)[ri]
-#         bonds = torch.cat([virtual_bonds, real_bonds], dim = 0)
-#         connection_dict = defaultdict(list)
-#         matrix = torch.eye(max_size)
-#         for i, bond in enumerate(bonds):
-#             connection_dict[bond[0].item()].append(i)
-#             connection_dict[bond[1].item()].append(i)
-#         for node, bonds in connection_dict.items():
-#             for connection in list(permutations(bonds, 2)):
-#                 matrix[connection[0]][connection[1]] = 2
-#         bpms.append(matrix.unsqueeze(0).long())
-#     return torch.cat(bpms, dim = 0)
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, heads, d_model, positional_number = 5, dropout = 0.1):
@@ -185,7 +96,6 @@ class MultiHeadAttention(nn.Module):
             self.relative_v = nn.Parameter(torch.randn(self.p_k, self.d_k))
         self.q_linear = nn.Linear(d_model, d_model, bias=False)
         self.k_linear = nn.Linear(d_model, d_model, bias=False)
-#         self.v_linear = nn.Linear(d_model, d_model, bias=False)
         self.v_linear = nn.Sequential(
                             nn.Linear(d_model, d_model), 
                             nn.ReLU(), 
@@ -229,6 +139,7 @@ class MultiHeadAttention(nn.Module):
             attn = (attn1 + attn2) /math.sqrt(self.d_k)
         
         if mask is not None:
+            mask = mask.bool()
             mask = mask.unsqueeze(1).repeat(1,mask.size(-1),1)
             mask = mask.unsqueeze(1).repeat(1,attn.size(1),1,1)
             attn[~mask] = float(-9e9)
@@ -240,67 +151,6 @@ class MultiHeadAttention(nn.Module):
         output = output.transpose(1,2).contiguous().view(bs, -1, self.d_model).squeeze(-1)
         output = self.to_out(output * self.gating(x).sigmoid()) # gate self attention
         return x + self.dropout2(output), attn
-    
-    
-# class MultiHeadAttention(nn.Module):
-#     def __init__(self, heads, d_model, dropout = 0.1):
-#         super(MultiHeadAttention, self).__init__()
-#         self.embedded_size = 5
-#         self.d_model = d_model
-#         self.d_k = d_model // heads
-#         self.h = heads
-#         self.Er = nn.Parameter(torch.randn(self.embedded_size, self.d_k))
-#         self.q_linear = nn.Linear(d_model, d_model, bias=False)
-#         self.k_linear = nn.Linear(d_model, d_model, bias=False)
-#         self.v_linear = nn.Sequential(
-#                             nn.Linear(d_model, d_model), 
-#                             nn.ReLU(), 
-#                             nn.Dropout(dropout),
-#                             nn.Linear(d_model, d_model))
-#         self.dropout = nn.Dropout(dropout)
-#         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
-        
-#     def reset_parameters(self):
-#         for p in self.parameters():
-#             if p.dim() > 1:
-#                 nn.init.xavier_uniform_(p)
-                
-#     def forward(self, x, rpm, mask=None):
-#         bs = x.size(0)
-#         k = self.k_linear(x).view(bs, -1, self.h, self.d_k)
-#         q = self.q_linear(x).view(bs, -1, self.h, self.d_k)
-#         v = self.v_linear(x).view(bs, -1, self.h, self.d_k)
-#         k = k.transpose(1,2)
-#         q = q.transpose(1,2)
-#         v = v.transpose(1,2)
-#         Srel = self.skew(q, rpm)
-#         scores, output = self.attention(q, k, v, Srel, mask)
-#         output = output.transpose(1,2).contiguous().view(bs, -1, self.d_model)
-#         output = output + x
-#         output = self.layer_norm(output)
-#         return output.squeeze(-1), scores
-    
-#     def skew(self, q, rpm):
-#         QEr = torch.matmul(q, self.Er.transpose(0, 1))
-#         rpms = self.one_hot_embedding(rpm.unsqueeze(1).repeat(1, self.h, 1, 1)).to(QEr.device)
-#         Srel = torch.matmul(rpms, QEr.unsqueeze(-1)).squeeze(-1)
-#         return Srel
-    
-#     def one_hot_embedding(self, labels):
-#         y = torch.eye(self.embedded_size)
-#         return y[labels]
-    
-#     def attention(self, q, k, v, Srel, mask=None):
-#         scores = (torch.matmul(q, k.transpose(-2, -1)) + Srel)/math.sqrt(self.d_k)
-#         if mask is not None:
-#             mask = mask.unsqueeze(1).repeat(1,mask.size(-1),1)
-#             mask = mask.unsqueeze(1).repeat(1,scores.size(1),1,1)
-#             scores[~mask] = float(-9e15)
-#         scores = torch.softmax(scores, dim=-1)
-#         if self.dropout is not None:
-#             scores = self.dropout(scores) 
-#         output = torch.matmul(scores, v)
-#         return scores, output
         
     
 class GELU(nn.Module):
@@ -323,31 +173,6 @@ class FeedForward(nn.Module):
         x = self.layer_norm(x)
         output = self.net(x)
         return x + self.dropout(output)
-
-# class Global_Reactivity_Attention(nn.Module):
-#     def __init__(self, d_model, heads, n_layers = 6, dropout = 0.1):
-#         super(Global_Reactivity_Attention, self).__init__()
-#         self.n_layers = n_layers
-#         att_stack = []
-#         pff_stack = []
-#         for _ in range(n_layers-1):
-#             att_stack.append(MultiHeadAttention(heads, d_model, dropout))
-#             pff_stack.append(PositionwiseFeedForward(d_model, dropout=dropout))
-#         if n_layers > 1:
-#             self.att_stack = nn.ModuleList(att_stack)
-#             self.pff_stack = nn.ModuleList(pff_stack)
-#         self.last_att = MultiHeadAttention(heads, d_model, dropout)
-        
-#     def forward(self, x, rpm, mask = None):
-#         scores = []
-#         for n in range(self.n_layers-1):
-#             x, score = self.att_stack[n](x, rpm, mask)
-#             scores.append(score)
-#             x = self.pff_stack[n](x)
-            
-#         output, score = self.last_att(x, rpm, mask)
-#         scores.append(score)
-#         return output, scores
     
 class Global_Reactivity_Attention(nn.Module):
     def __init__(self, d_model, heads, n_layers = 6, positional_number = 5, dropout = 0.1):

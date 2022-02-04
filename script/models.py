@@ -5,9 +5,9 @@ import sklearn
 import dgl
 import dgllife
 from dgllife.model import MPNNGNN
-from model_utils import get_reactant_feats, reactive_group_pooling, Global_Reactivity_Attention, unpack_feats, pack_feats, pack_bond_feats, unpack_bond_feats, get_bondmatrix
+from model_utils import pack_atom_feats, unpack_atom_feats, pack_bond_feats, unpack_bond_feats, reactive_pooling, Global_Reactivity_Attention
 
-class NeuralChemist(nn.Module):
+class LocalTransform(nn.Module):
     def __init__(self,
                  node_in_feats,
                  edge_in_feats,
@@ -18,7 +18,7 @@ class NeuralChemist(nn.Module):
                  attention_layers,
                  Template_rn, 
                  Template_vn):
-        super(NeuralChemist, self).__init__()
+        super(LocalTransform, self).__init__()
         
         self.activation = nn.ReLU()
         
@@ -60,18 +60,15 @@ class NeuralChemist(nn.Module):
                 
     def forward(self, apms, bg, hg, node_feats, edge_feats):
         atom_feats = self.mpnn(bg, node_feats, edge_feats)
-        atom_feats, mask = pack_feats(bg, atom_feats)
+        atom_feats, mask = pack_atom_feats(bg, atom_feats)
         atom_feats, attention_score = self.AttentionNet_atom(atom_feats, apms, mask)
-        atom_feats = unpack_feats(bg, atom_feats)
-        atom_feats = get_reactant_feats(bg, hg, atom_feats)
-        react_v, feats_v, idxs_v = reactive_group_pooling(hg, atom_feats, self.PoolingNet_v, 'virtual')
-        react_r, feats_r, idxs_r = reactive_group_pooling(hg, atom_feats, self.PoolingNet_r, 'real')
+        atom_feats = unpack_atom_feats(bg, hg, atom_feats)
         
+        react_v, feats_v, idxs_v = reactive_pooling(hg, atom_feats, self.PoolingNet_v, 'virtual')
+        react_r, feats_r, idxs_r = reactive_pooling(hg, atom_feats, self.PoolingNet_r, 'real')
         bond_feats, mask = pack_bond_feats(feats_v, feats_r)
-
         bond_feats, _ = self.AttentionNet_bond(bond_feats, None, mask)
         feats_v, feats_r = unpack_bond_feats(bond_feats, idxs_v, idxs_r)
         
         template_v, template_r = self.OutputNet_v(feats_v), self.OutputNet_r(feats_r)
-        
         return template_v, template_r, react_v, react_r, idxs_v, idxs_r, attention_score

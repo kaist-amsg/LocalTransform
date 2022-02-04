@@ -189,7 +189,6 @@ def select_right_products(matched_product_list, verbose):
 def prepare_template(collector, template, pred_idxs, change_bond_only):
     smiles = collector.reactant
     non_reacts = collector.non_reacts
-    intermolecule = collector.intermolecule
     
     if not change_bond_only:
         pred_idxs_inv = {v:k for k,v in pred_idxs.items()}
@@ -240,7 +239,7 @@ def prepare_template(collector, template, pred_idxs, change_bond_only):
                     matched_nums += temp_num
                     match_temp = True
         if match_temp == False:
-            if intermolecule:
+            if collector.sep:
                 return None, None, None, None
         else:
             new_temp_reactants.append('(%s)' % '.'.join(fragment_temp))

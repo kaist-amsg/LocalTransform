@@ -63,7 +63,7 @@ def split_pred_idxs(pred_idxs):
     return matched_idxs
     
 class Collector():
-    def __init__(self, reactant, tempaltes_info, reagents, products = 'nan', intermolecule = False, verbose = False):
+    def __init__(self, reactant, tempaltes_info, reagents, products = None, sep = False, verbose = False):
         self.templates_info = tempaltes_info
         self.reactant = reactant
         if str(reagents) == 'nan':
@@ -81,7 +81,7 @@ class Collector():
                 self.has_small_fragment = True
             self.non_reacts = self.get_nonreact_frags()
         else:
-            self.min_n_atoms = 1
+            self.min_n_atoms = 2
             self.products = None
             self.non_reacts = []
             self.has_small_fragment = False
@@ -89,7 +89,7 @@ class Collector():
         self.verbose = verbose
         if self.verbose:
             print ('product:', self.products)
-        self.intermolecule = intermolecule
+        self.sep = sep
         
         self.predictions = defaultdict(dict)
         self.old_predictions = set()
@@ -100,12 +100,9 @@ class Collector():
         
         
     def clean_small_frags(self, products):
-        return  '.'.join([product for product in products.split('.') if Chem.MolFromSmiles(product).GetNumAtoms() >= self.min_n_atoms])
-
-    def fix_small_product(self, products):
         if '[IH3]' in products:
-            return products.replace('[IH3]', '[IH]')
-        return self.clean_small_frags(products)
+            products = products.replace('[IH3]', '[IH]')
+        return  '.'.join([product for product in products.split('.') if Chem.MolFromSmiles(product).GetNumAtoms() >= self.min_n_atoms])
 
     def get_nonreact_frags(self):
         non_reacts = []
@@ -284,8 +281,6 @@ class Collector():
             
         newly_predicted = []
         for matched_idx, products in matched_products.items():
-            if self.products != '':
-                products = self.fix_small_product(products)
             for product in products.split('.'):
                 if product not in newly_predicted and product not in self.old_predictions:
                     newly_predicted.append(product)

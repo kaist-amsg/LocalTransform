@@ -17,7 +17,7 @@ from rdkit import Chem
 from dgl.data.utils import Subset
 from dgllife.utils import WeaveAtomFeaturizer, CanonicalBondFeaturizer, mol_to_bigraph, EarlyStopping
 
-from models import NeuralChemist
+from models import LocalTransform
 from dataset import USPTODataset, USPTOTestDataset, combine_reactants
 
 def init_featurizer(args):
@@ -92,7 +92,7 @@ def weight_loss(class_num, args, reduction = 'none'):
 
 def load_model(args):
     exp_config = get_configure(args)
-    model = NeuralChemist(
+    model = LocalTransform(
         node_in_feats=exp_config['in_node_feats'],
         edge_in_feats=exp_config['in_edge_feats'],
         node_out_feats=exp_config['node_out_feats'],
