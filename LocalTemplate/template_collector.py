@@ -70,25 +70,11 @@ class Collector():
             self.reagents = ''
         else:
             self.reagents = reagents
-        
-        if products != None:
-            self.min_n_atoms = min([8] + [Chem.MolFromSmiles(p).GetNumAtoms() for p in products.split('.') if Chem.MolFromSmiles(p).GetNumAtoms() != 1])
-            d_product = '.'.join([p for p in demap(products).split('.') if p not in demap(self.reactant).split('.') + demap(self.reagents).split('.')])
-            self.products = self.clean_small_frags(d_product)
-            if self.products == d_product:
-                self.has_small_fragment = False
-            else:
-                self.has_small_fragment = True
-            self.non_reacts = self.get_nonreact_frags()
-        else:
-            self.min_n_atoms = 2
-            self.products = None
-            self.non_reacts = []
-            self.has_small_fragment = False
-            
+        self.min_n_atoms = 2
+        self.products = None
+        self.non_reacts = []
+        self.has_small_fragment = False
         self.verbose = verbose
-        if self.verbose:
-            print ('product:', self.products)
         self.sep = sep
         
         self.predictions = defaultdict(dict)
@@ -98,34 +84,10 @@ class Collector():
         self.used_idx = defaultdict(list)
         self.predicted_roles = dict()
         
-        
     def clean_small_frags(self, products):
         if '[IH3]' in products:
             products = products.replace('[IH3]', '[IH]')
         return  '.'.join([product for product in products.split('.') if Chem.MolFromSmiles(product).GetNumAtoms() >= self.min_n_atoms])
-
-    def get_nonreact_frags(self):
-        non_reacts = []
-        for frag in self.reactant.split('.'):
-            if frag in self.products.split('.'):
-                non_reacts.append(frag)
-        return non_reacts
-        
-    def structure_match(self, pred, true):
-        if true == None:
-            return False
-        elif true == '':
-            return True
-        try:
-            trues = [true for true in demap(true).split('.')]
-            pred_mix = [r for r in demap(self.reactant).split('.')] + pred.split('.')
-            for true in trues:
-                if true in pred_mix:
-                    return True
-            return False
-        except Exception as e:
-            print (e)
-            return False
     
     def reconstruct_actions(self, template_roles, pred_idxs, recorded_actions):
         pred_actions = []
@@ -168,7 +130,6 @@ class Collector():
         return outputs
 
     def collect(self, template, H_code, C_code, pred_action, pred_idx, score):
-        correct = False
         template_H_C = '%s_%s_%s' % (template, H_code, C_code)
 
         template_info = self.templates_info[template_H_C]
@@ -205,16 +166,14 @@ class Collector():
                     if self.verbose:
                         print ('pred_actions:', matched_idxs)
                         print ('template_actions:', template_actions)
-                    correct = self.predict(template_H_C, H_change, C_change, matched_idxs, template_actions, True)
+                    self.predict(template_H_C, H_change, C_change, matched_idxs, template_actions, True)
             else:
                 self.predicted_template[template_H_C] = [{edit_type:[] for edit_type in template_actions}]
                 self.predicted_template[template_H_C][0][pred_action].append(pred_idx)
                 pred_idxs = self.predicted_template[template_H_C][0]
                 matched_idxs = self.recursive_match(pred_idxs, template_actions, template_H_C, n_required_idx)
                 for matched_idx in matched_idxs:
-                    correct = self.predict(template_H_C, H_change, C_change, matched_idx, template_actions)
-                    if correct:
-                        break
+                    self.predict(template_H_C, H_change, C_change, matched_idx, template_actions)
                         
         elif change_bond_only:
             self.predicted_template[template_H_C].append(pred_idx)
@@ -223,7 +182,7 @@ class Collector():
                 if self.verbose:
                     print ('pred_actions:', matched_idxs)
                     print ('template_actions:', template_actions)
-                correct = self.predict(template_H_C, H_change, C_change, matched_idxs, template_actions, True)
+                self.predict(template_H_C, H_change, C_change, matched_idxs, template_actions, True)
                 
         else:
             for pred_idxs in self.predicted_template[template_H_C]: 
@@ -236,13 +195,10 @@ class Collector():
                 for matched_idx in matched_idxs:
                     if self.verbose:
                         print ('matched_idx:', matched_idx)
-                    correct = self.predict(template_H_C, H_change, C_change, matched_idx, template_actions)
-                    if correct:
-                        break
-        return correct
+                    self.predict(template_H_C, H_change, C_change, matched_idx, template_actions)
+        return 
     
     def predict(self, template_H_C, H_change, C_change, pred_idxs, template_actions, change_bond_only = False):
-        
         if not change_bond_only:
             pred_idxs, pred_actions = pred_idxs
             idx_code = ''.join([str(pred_idxs[k]) for k in pred_idxs.keys()])
@@ -276,11 +232,12 @@ class Collector():
         except Exception as e:
             if self.verbose:
                 print (e)
-            return False
-        correct = False
+            return 
             
         newly_predicted = []
         for matched_idx, products in matched_products.items():
+            if self.products != '':
+                products = self.clean_small_frags(products)
             for product in products.split('.'):
                 if product not in newly_predicted and product not in self.old_predictions:
                     newly_predicted.append(product)
@@ -291,15 +248,14 @@ class Collector():
             
         if len(newly_predicted) != 0:
             if len(newly_predicted[0]) == 0:
-                return correct
+                return 
             predicted_product = '.'.join(sorted(newly_predicted))
             if change_bond_only:
                 score = np.average([self.template_scores[template_H_C][int(action.split('_')[1])] for action in pred_actions])
             else:
                 score = np.average([self.template_scores[template_H_C][action] for action in pred_actions])
-            correct = self.structure_match(predicted_product, self.products)
             if predicted_product not in self.predictions:
-                self.predictions[predicted_product] = {'template':fit_temp, 'pred_actions': pred_actions, 'pred_idx':pred_idxs, 'score':score, 'correct':correct}
-        return correct
+                self.predictions[predicted_product] = {'template':fit_temp, 'pred_actions': pred_actions, 'pred_idx':pred_idxs, 'score':score}
+        return
     
     

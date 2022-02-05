@@ -6,7 +6,7 @@ import torch
 from torch import nn
 import sklearn
 
-from rdkit.Chem import PandasTools, AllChem
+from rdkit import Chem 
 
 import dgl
 from dgllife.utils import smiles_to_bigraph, WeaveAtomFeaturizer, CanonicalBondFeaturizer
@@ -16,7 +16,7 @@ from script.utils import init_featurizer, load_model, atom_position_matrix
 from script.get_edit import combined_edit
 from LocalTemplate.template_collector import Collector
 
-def make_heterograph(s, smiles_to_graph):
+def make_densegraph(s, smiles_to_graph):
     g = smiles_to_graph(s, canonical_atom_order=False)
     node_n = g.number_of_nodes()
     no_bonds = []
@@ -39,6 +39,7 @@ def make_heterograph(s, smiles_to_graph):
     
 
 def predict(model, rpms, graph, hgraph, device):
+    device = torch.device(device)
     bg = dgl.batch([graph])
     hbg = dgl.batch([hgraph])
     bg.set_n_initializer(dgl.init.zero_initializer)
@@ -75,12 +76,13 @@ def init_LocalTransform(args):
 #     node_featurizer = NCAtomFeaturizer()
     edge_featurizer = CanonicalBondFeaturizer(self_loop=True)
     graph_function1 = lambda s: smiles_to_graph(s, node_featurizer = node_featurizer, edge_featurizer = edge_featurizer, canonical_atom_order = False)
-    graph_function2 = lambda s: make_heterograph(s, smiles_to_graph)
+    graph_function2 = lambda s: make_densegraph(s, smiles_to_graph)
     return model, (graph_function1, graph_function2), template_dicts, template_infos
 
-def remap(mol):
-    for atom in mol.GetAtoms():
-        atom.SetAtomMapNum(atom.GetIdx())
+def demap(smiles):
+    mol = Chem.MolFromSmiles(smiles)
+    [atom.SetAtomMapNum(0) for atom in mol.GetAtoms()]
+    return Chem.MolToSmiles(mol)
 
 def predict_product(reactant, model, graph_functions, device, template_dicts, template_infos, product = None, reagents = 'nan', top_k = 5, collect_n = 100, verbose = 0, sep = False):
     model.eval()
@@ -90,7 +92,6 @@ def predict_product(reactant, model, graph_functions, device, template_dicts, te
         smiles = reactant
     rpms = atom_position_matrix([reactant], [reagents])
     graph, hgraph = graph_functions[0](smiles), graph_functions[1](reactant)
-    
     with torch.no_grad():
         pred_VT, pred_RT, _, _, pred_VI, pred_RI, attentions = predict(model, rpms, graph, hgraph, device)
         pred_v = nn.Softmax(dim=1)(pred_VT)
@@ -99,29 +100,33 @@ def predict_product(reactant, model, graph_functions, device, template_dicts, te
         pred_ri = pred_RI[0].cpu()
         pred_types, pred_sites, pred_scores = combined_edit(hgraph, pred_vi, pred_ri, pred_v, pred_r, collect_n)
 
-    predicted_products = [reactant]
-    predicted_edition = [None]
-    predicted_scores = [None]
-    corrects = [None]
-    collector = Collector(reactant, template_infos, reagents, product, sep, verbose = verbose > 1)
+    collector = Collector(reactant, template_infos, reagents, sep, verbose = verbose > 1)
     for k, (pred_type, pred_site, score) in enumerate(zip(pred_types, pred_sites, pred_scores)):
-        
         template, H_code, C_code, action = template_dicts[pred_type][pred_site[1]]
         pred_site = pred_site[0]
         if verbose > 0:
-            print ('%sth prediction:' % k, template, action, pred_site, score, H_code, C_code)
+            print ('%sth prediction:' % k, template, action, pred_site, score)
         collector.collect(template, H_code, C_code, action, pred_site, score)
         if len(collector.predictions) >= top_k:
-            break
-            
+            break    
     sort_predictions = [k for k, v in sorted(collector.predictions.items(), key=lambda item: -item[1]['score'])]
-    predicted_products += [p for p in sort_predictions]
-    predicted_edition += [collector.predictions[p] for p in sort_predictions]
-    predicted_scores += [collector.predictions[p]['score'] for p in sort_predictions]
-    corrects += [collector.predictions[p]['correct'] for p in sort_predictions]
-    results_df = pd.DataFrame({'SMILES': predicted_products, 'Edition': predicted_edition, 'Score': predicted_scores})
+    
+    reactant = demap(reactant)
     if product != None:
-        results_df['Correct'] = corrects
-    PandasTools.AddMoleculeColumnToFrame(results_df,'SMILES','Molecule')
-    remap(results_df['Molecule'][0])
-    return results_df, attentions
+        correct_at = False
+        product = demap(product)
+        
+    results_dict = {'Reactants' : demap(reactant)}
+    results_df = pd.DataFrame({'Reactants' : [Chem.MolFromSmiles(reactant)]})
+    for k, p in enumerate(sort_predictions):
+        results_dict['Top-%d' % (k+1)] = collector.predictions[p]
+        results_dict['Top-%d' % (k+1)]['product'] = p
+        results_df['Top-%d' % (k+1)] = [Chem.MolFromSmiles(p)]
+        if product != None:
+            if set(p.split('.')).intersection(set(product.split('.'))):
+                correct_at = k+1
+            
+    if product != None:
+        results_df['Correct at'] = correct_at
+    return results_df, results_dict
+

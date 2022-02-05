@@ -65,7 +65,7 @@ You can get four preprocessed files, including
 ### [3] Train LocalTransform model
 Go to the main scripts folder
 ```
-cd ../script
+cd ../scripts
 ```
 and run the following to train the model with reagent seperated or not (default: False)
 ```
@@ -86,8 +86,9 @@ python Decode_predictions.py -sep True
 The decoded reactants will be saved at 
 `LocalTransform/outputs/decoded_prediction/LocalTransform_sep.txt`<br>
 
-## LocalTransform on Jupyter Notebook
-For quick implementation of organic reaction outcome prediction via our model, see `Synthesis.ipynb` for quick start.
+
+## Human benchmark results and implementation on Jupyter Notebook
+For human benchmark results and quick implementation of organic reaction outcome prediction via LocalTransform, see `Synthesis.ipynb` for quick start.
 
 #### Exact match accuracy (%) on USPTO-480k dataset at seperated prediction scenario
 
