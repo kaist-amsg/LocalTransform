@@ -12,8 +12,8 @@ import dgl
 from dgllife.utils import smiles_to_bigraph, WeaveAtomFeaturizer, CanonicalBondFeaturizer
 from functools import partial
 
-from script.utils import init_featurizer, load_model, atom_position_matrix
-from script.get_edit import combined_edit
+from scripts.utils import init_featurizer, load_model, atom_position_matrix
+from scripts.get_edit import combined_edit
 from LocalTemplate.template_collector import Collector
 
 def make_densegraph(s, smiles_to_graph):

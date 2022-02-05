@@ -77,7 +77,7 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--dataset', default='USPTO_480k', help='Dataset to use')
     parser.add_argument('-m', '--model-name', default='default', help='Model to use')
     parser.add_argument('-s', '--sep', default=False, help='Train the model with reagent seperated or not')
-    parser.add_argument('-k', '--top-k', default= 1, help='Number of top predictions')
+    parser.add_argument('-k', '--top-k', default= 5, help='Number of top predictions')
     args = parser.parse_args().__dict__
     mkdir_p('../outputs/decoded_prediction')
     main(args) 
