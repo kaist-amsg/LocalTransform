@@ -1,5 +1,5 @@
 # LocalTransform
-Implementation of Reaction outcome prediction with LocalTransform developed by prof. Yousung Jung group at KAIST (contact: ysjn@kaist.ac.kr).
+Implementation of organic reactivity prediction with LocalTransform developed by prof. Yousung Jung group at KAIST (contact: ysjn@kaist.ac.kr).
 
 ## Developer
 Shuan Chen (shuankaist@kaist.ac.kr)<br>
@@ -26,7 +26,7 @@ pip install dgllife
 ```
 
 ## Publication
-Prediction of Organic Reaction Outcomes by Chemist-Like Machine Intelligence and Generalized Reaction Templates (under review).
+Predicting Organic Reactivity by Chemist-Like Machine Intelligence Based on Generalized Reaction Templates (under review).
 
 
 ## Usage
