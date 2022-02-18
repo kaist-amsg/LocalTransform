@@ -19,9 +19,9 @@ Install pytorch with the cuda version that fits your device.<br>
 cd LocalTransform
 conda create -c conda-forge -n rdenv  python=3.6 -y
 conda activate rdenv
-conda install pytorch==1.0.0 cuda80 -c pytorch -y
+conda install pytorch cudatoolkit=11.3 -c pytorch -y
 conda install -c conda-forge rdkit -y
-pip install dgl
+conda install -c dglteam dgl-cuda11.3
 pip install dgllife
 ```
 
