@@ -3,6 +3,17 @@
 
 Implementation of organic reactivity prediction with LocalTransform developed by prof. Yousung Jung group at KAIST (contact: ysjn@kaist.ac.kr).
 
+## Contents
+
+- [Developer](#developer)
+- [OS Requirements](#os-requirements)
+- [Python Dependencies](#python-dependencies)
+- [Installation Guide](#installation-guide)
+- [Reproduce the results](#reproduce-the-results)
+- [Demo and human benchmark results](#demo-and-human-benchmark-results)
+- [Citation](#citation)
+- [License](#license)
+
 ## Developer
 Shuan Chen (shuankaist@kaist.ac.kr)<br>
 
@@ -30,10 +41,6 @@ conda install -c conda-forge rdkit -y
 conda install -c dglteam dgl-cuda11.3
 pip install dgllife
 ```
-
-## Publication
-Predicting Organic Reactivity by Chemist-Like Machine Intelligence Based on Generalized Reaction Templates (under review).
-
 
 ## Reproduce the results
 ### [1] Download the raw data of USPTO-480k dataset
@@ -95,13 +102,17 @@ The decoded reactants will be saved at
 ### [5] Exact match accuracy calculation
 By using
 ```
-python Calculate_topk_accuracy.py -sep True
+python Calculate_topk_accuracy.py -m sep
 ```
 the top-k accuracy will be calculated from the files generated at step [4]
 
-## Demo on Jupyter Notebook and human benchmark results
+## Demo and human benchmark results
 See `Synthesis.ipynb` for running instructions and expected output. Human benchmark results is also shown at the end of the notebook.<br>
 It takes approximately one second to predict a product from a set of given reactants.
+
+
+## Citation
+Predicting Organic Reactivity by Chemist-Like Machine Intelligence Based on Generalized Reaction Templates (under review).
 
 ## License
 This project is covered under the **Apache 2.0 License**.
