@@ -6,6 +6,9 @@ Implementation of organic reactivity prediction with LocalTransform developed by
 ## Developer
 Shuan Chen (shuankaist@kaist.ac.kr)<br>
 
+## OS Requirements
+This repository has been tested on both **Linux** and **Windows** operating systems.
+
 ## Python Dependencies
 * Python (version >= 3.6) 
 * Numpy (version >= 1.16.4) 
