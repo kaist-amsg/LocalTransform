@@ -1,10 +1,12 @@
 # LocalTransform
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 Implementation of organic reactivity prediction with LocalTransform developed by prof. Yousung Jung group at KAIST (contact: ysjn@kaist.ac.kr).
 
 ## Developer
 Shuan Chen (shuankaist@kaist.ac.kr)<br>
 
-## Requirements
+## Python Dependencies
 * Python (version >= 3.6) 
 * Numpy (version >= 1.16.4) 
 * PyTorch (version >= 1.0.0) 
@@ -12,9 +14,10 @@ Shuan Chen (shuankaist@kaist.ac.kr)<br>
 * DGL (version >= 0.5.2)
 * DGLLife (version >= 0.2.6)
 
-## Requirements
+## Installation Guide
 Create a virtual environment to run the code of LocalTransform.<br>
-Install pytorch with the cuda version that fits your device.<br>
+Make sure to install pytorch with the cuda version that fits your device.<br>
+This process usually takes few munites to complete.<br>
 ```
 cd LocalTransform
 conda create -c conda-forge -n rdenv  python=3.6 -y
@@ -29,7 +32,7 @@ pip install dgllife
 Predicting Organic Reactivity by Chemist-Like Machine Intelligence Based on Generalized Reaction Templates (under review).
 
 
-## Usage
+## Reproduce the results
 ### [1] Download the raw data of USPTO-480k dataset
 Download the data from https://github.com/wengong-jin/nips17-rexgen/blob/master/USPTO/ and move the data to `./data/USPTO_480k/`.
 
@@ -86,30 +89,16 @@ python Decode_predictions.py -sep True
 The decoded reactants will be saved at 
 `LocalTransform/outputs/decoded_prediction/LocalTransform_sep.txt`<br>
 
+### [5] Exact match accuracy calculation
+By using
+```
+python Calculate_topk_accuracy.py -sep True
+```
+the top-k accuracy will be calculated from the files generated at step [4]
 
-## Human benchmark results and implementation on Jupyter Notebook
-For human benchmark results and quick implementation of organic reaction outcome prediction via LocalTransform, see `Synthesis.ipynb` for quick start.
+## Demo on Jupyter Notebook and human benchmark results
+See `Synthesis.ipynb` for running instructions and expected output. Human benchmark results is also shown at the end of the notebook.<br>
+It takes approximately one second to predict a product from a set of given reactants.
 
-#### Exact match accuracy (%) on USPTO-480k dataset at seperated prediction scenario
-
-| Method | Top-1 | Top-2 | Top-3 | Top-5 |
-| -------- | -------- | -------- | -------- | -------- |
-| Molecular Transformer | 90.4 | 93.7 | 94.6 | 95.3 |
-| Augmented Transformer | 91.9 | 95.4 | / | 97.0 |
-| WLDN         | 85.6 | 90.5 | 92.8 | 93.4 |
-| MEGAN        | 89.3 | 92.7 | 94.4 | 95.6 |
-| Symbolic  | 90.4 | 93.2 | 94.1 | 95.0 |
-| NERF     | 90.7 | 92.3 | 93.3 | 93.7 |
-| LocalTransform  | **92.3** | **95.6** | **96.5** | **97.2** |
-
-#### Exact match accuracy (%) on USPTO-480k dataset at mixed prediction scenario
-
-| Method | Top-1 | Top-2 | Top-3 | Top-5 |
-| -------- | -------- | -------- | -------- | -------- |
-| Molecular Transformer | 88.7 | 92.1 | 93.1 | 94.2 |
-| Augmented Transformer | 90.6 | 94.4 | / | 96.1 |
-| Graph2SMILES    | 90.3 | / | 94.0 | 94.8 |
-| MEGAN        | 86.3 | 90.3 | 92.4 | 94.0 |
-| LocalTransform  | **90.8** | **94.8** | **95.7** | **96.3** |
-
-
+## License
+This project is covered under the **Apache 2.0 License**.
