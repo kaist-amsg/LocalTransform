@@ -7,6 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 import math
 import copy
+import numpy as np
 from collections import defaultdict
 from itertools import permutations
 
@@ -14,12 +15,7 @@ import sklearn
 import dgl
 import dgllife
 
-def pair_atom_feats(g, node_feats, etype):
-    atom_pair_list = torch.transpose(g.adjacency_matrix(etype=etype).coalesce().indices(), 0, 1)
-    atom_pair_idx1 = atom_pair_list[:,0]
-    atom_pair_idx2 = atom_pair_list[:,1]
-    atom_pair_feats = torch.cat((node_feats[atom_pair_idx1], node_feats[atom_pair_idx2]), dim = 1)
-    return atom_pair_feats
+from time import time
 
 def pack_atom_feats(bg, atom_feats):
     bg.ndata['h'] = atom_feats
@@ -28,62 +24,86 @@ def pack_atom_feats(bg, atom_feats):
     masks = [torch.ones(g.num_nodes(), dtype=torch.uint8) for g in gs]
     padded_feats = pad_sequence(edit_feats, batch_first=True, padding_value= 0)
     masks = pad_sequence(masks, batch_first=True, padding_value= 0)
+    
     return padded_feats, masks
 
 def unpack_atom_feats(bg, hg, atom_feats):
     reactant_feats = []
-    gs = dgl.unbatch(bg)
-    atom_feats = [feats[:g.num_nodes()] for feats, g in zip(atom_feats, gs)]
+    atom_feats = [feats[:g.num_nodes()] for feats, g in zip(atom_feats, dgl.unbatch(bg))]
     bg.ndata['h'] = torch.cat(atom_feats, dim = 0)
     rgs = dgl.unbatch(bg)
     hgs = dgl.unbatch(hg)
     for rg, hg in zip(rgs, hgs):
         reactant_feats.append(rg.ndata['h'][:hg.num_nodes()])
     return torch.cat(reactant_feats, dim = 0)
-   
-def reactive_pooling(hg, atom_feats, PoolingNet, etype):
-    device = atom_feats.device
-    react_outputs = []
-    pool_feats = []
-    top_idxs = []
-    hg.ndata['h'] = atom_feats
-    gs = dgl.unbatch(hg)
-    for g in gs:
-        n_edges = g.num_edges(etype=etype)
-        if n_edges == 0:
-            pool_feats.append(torch.FloatTensor([]).to(device))
-            top_idxs.append(torch.LongTensor([]).to(device))
-            continue
-        bond_feats = pair_atom_feats(g, g.ndata['h'], etype)
-        react_output = PoolingNet(bond_feats)
-        pooling_size = g.num_nodes()
-        if n_edges < pooling_size:
-            _, top_idx = torch.topk(react_output[:,1], n_edges)
-        else:
-            _, top_idx = torch.topk(react_output[:,1], pooling_size)
-        react_outputs.append(react_output[top_idx])
-        pool_feats.append(bond_feats[top_idx])
-        top_idxs.append(top_idx)
+
+def reactive_pooling(bg, atom_feats, bonds_dict, bond_nets, pooling_net):
+    feat_dim, device = atom_feats.size(-1), atom_feats.device
+    react_outputs = {'virtual':[], 'real':[]}
+    top_idxs = {'virtual':[], 'real':[]}
+    pooled_feats_batch = []
+    pooled_bonds_batch = []
+    bg.ndata['h'] = torch.cat([feats[:g.num_nodes()] for feats, g in zip(atom_feats, dgl.unbatch(bg))], dim = 0)
+    gs = dgl.unbatch(bg)
+    empty_longtensor = torch.LongTensor([]).to(device)
+    empty_floattensor = torch.FloatTensor([]).to(device)
+    for i, g in enumerate(gs):
+        pool_size = g.num_nodes()
+        pooled_feats = []
+        pooled_bonds = []
+        for bond_type in ['virtual', 'real']:
+            bonds, bond_net = bonds_dict[bond_type][i], bond_nets[bond_type]
+            n_bonds = bonds.size(0)
+            if n_bonds == 0:
+                top_idxs[bond_type].append(empty_longtensor)
+                react_outputs[bond_type].append(empty_floattensor)
+                continue
+
+            bond_feats = g.ndata['h'][bonds.unsqueeze(1)].view(-1, feat_dim*2)
+            react_output = pooling_net(bond_feats)
+            if n_bonds < pool_size:
+                _, top_idx = torch.topk(react_output[:,1], n_bonds)
+            else:
+                _, top_idx = torch.topk(react_output[:,1], pool_size)
+
+            top_idxs[bond_type].append(top_idx)
+            react_outputs[bond_type].append(react_output[top_idx])
+            pooled_feats.append(bond_net(bond_feats[top_idx]))
+            pooled_bonds.append(bonds[top_idx])
+            
+        pooled_feats_batch.append(torch.cat(pooled_feats))
+        pooled_bonds_batch.append(torch.cat(pooled_bonds))
         
-    react_outputs = torch.cat(react_outputs, dim = 0)
-    return react_outputs, pool_feats, top_idxs
+    for bond_type in ['virtual', 'real']:
+        react_outputs[bond_type] = torch.cat(react_outputs[bond_type], dim = 0)
+    return top_idxs, react_outputs, pooled_feats_batch, pooled_bonds_batch
 
-def pack_bond_feats(feats_v, feats_r):
-    edit_feats = [torch.cat([v, r], dim = 0) for v, r in zip(feats_v, feats_r)]
-    masks = [torch.ones(len(feats), dtype=torch.uint8) for feats in edit_feats]
-    padded_feats = pad_sequence(edit_feats, batch_first=True, padding_value= 0)
+def get_bdm(bonds, max_size):  # bond distance matrix
+    temp = torch.eye(max_size)
+    for i, bond1 in enumerate(bonds):
+        for j, bond2 in enumerate(bonds):
+            if i >= j: 
+                continue
+            if torch.unique(torch.cat([bond1, bond2])).size(0) < 4:  # at least on overlap
+                temp[i][j], temp[j][i] = 1, 1 # connect
+    return temp.unsqueeze(0).long() 
+
+def pack_bond_feats(bonds_feats, pooled_bonds):
+    masks = [torch.ones(len(feats), dtype=torch.uint8) for feats in bonds_feats]
+    padded_feats = pad_sequence(bonds_feats, batch_first=True, padding_value= 0)
+    bdms = [get_bdm(bonds, padded_feats.size(1)) for bonds in pooled_bonds]
     masks = pad_sequence(masks, batch_first=True, padding_value= 0)
-    return padded_feats, masks
+    return padded_feats, masks, torch.cat(bdms, dim = 0)
 
-def unpack_bond_feats(edit_feats, vritual_idx, real_idx):
+def unpack_bond_feats(bond_feats, idxs_dict):
     feats_v = []
     feats_r = []
-    for feats, vi, ri in zip(edit_feats, vritual_idx, real_idx):
-        vn, rn = len(vi), len(ri)
-        feats_v.append(feats[:vn])
-        feats_r.append(feats[vn:vn+rn])
+    for feats, v_bonds, r_bonds in zip(bond_feats, idxs_dict['virtual'], idxs_dict['real']):
+        n_vbonds, n_rbonds = v_bonds.size(0), r_bonds.size(0)
+        feats_v.append(feats[:n_vbonds])
+        feats_r.append(feats[n_vbonds:n_vbonds+n_rbonds])
     return torch.cat(feats_v, dim = 0), torch.cat(feats_r, dim = 0)
-
+    
 class MultiHeadAttention(nn.Module):
     def __init__(self, heads, d_model, positional_number = 5, dropout = 0.1):
         super(MultiHeadAttention, self).__init__()
@@ -150,7 +170,8 @@ class MultiHeadAttention(nn.Module):
 
         output = output.transpose(1,2).contiguous().view(bs, -1, self.d_model).squeeze(-1)
         output = self.to_out(output * self.gating(x).sigmoid()) # gate self attention
-        return x + self.dropout2(output), attn
+        return self.dropout2(output), attn
+#         return output, attn
         
     
 class GELU(nn.Module):
@@ -169,32 +190,25 @@ class FeedForward(nn.Module):
         self.dropout = nn.Dropout(dropout)
         
     def forward(self, x):
-#         x = self.layer_norm(x)
-#         output = self.net(x)
-        output = self.net(self.layer_norm(x))
-        return x + self.dropout(output)
+        x = self.layer_norm(x)
+        return self.net(x)
     
 class Global_Reactivity_Attention(nn.Module):
-    def __init__(self, d_model, heads, n_layers = 6, positional_number = 5, dropout = 0.1):
+    def __init__(self, d_model, heads = 8, n_layers = 3, positional_number = 5, dropout = 0.1):
         super(Global_Reactivity_Attention, self).__init__()
         self.n_layers = n_layers
         att_stack = []
         pff_stack = []
-        for _ in range(n_layers-1):
+        for _ in range(n_layers):
             att_stack.append(MultiHeadAttention(heads, d_model, positional_number, dropout))
             pff_stack.append(FeedForward(d_model, dropout=dropout))
-        if n_layers > 1:
-            self.att_stack = nn.ModuleList(att_stack)
-            self.pff_stack = nn.ModuleList(pff_stack)
-        self.last_att = MultiHeadAttention(heads, d_model, positional_number, dropout)
+        self.att_stack = nn.ModuleList(att_stack)
+        self.pff_stack = nn.ModuleList(pff_stack)
         
     def forward(self, x, rpm, mask = None):
-        scores = []
-        for n in range(self.n_layers-1):
-            x, score = self.att_stack[n](x, rpm, mask)
-            scores.append(score)
-            x = self.pff_stack[n](x)
-            
-        output, score = self.last_att(x, rpm, mask)
-        scores.append(score)
-        return output, scores
+        att_scores = {}
+        for n in range(self.n_layers):
+            m, att_score = self.att_stack[n](x, rpm, mask)
+            x = x + self.pff_stack[n](x+m)
+            att_scores[n] = att_score
+        return x, att_scores

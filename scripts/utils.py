@@ -3,7 +3,7 @@ import sklearn
 import dgl
 import errno
 import json
-import os
+import os, sys
 import time
 import numpy as np
 import pandas as pd
@@ -111,7 +111,6 @@ def load_model(args):
         
         optimizer = Adam(model.parameters(), lr = args['learning_rate'], weight_decay = args['weight_decay'])
         scheduler = lr_scheduler.StepLR(optimizer, step_size=args['schedule_step'])
-#         scheduler = lr_scheduler.StepLR(optimizer, step_size = 1, gamma = 0.8)
         if os.path.exists(args['model_path']):
             user_answer = input('%s exists, want to (a) overlap (b) continue from checkpoint (c) make a new model?' % args['model_path'])
             if user_answer == 'a':
@@ -126,6 +125,12 @@ def load_model(args):
                 args['model_path'] = '../models/%s.pth' % model_name
                 stopper = EarlyStopping(mode = 'lower', patience=args['patience'], filename=args['model_path'])
                 print ('Training a new model %s.pth' % model_name)
+            else:
+                print ("Input error: please enter a, b or c to specify the model name")
+                try:
+                    sys.exit(0)
+                except SystemExit:
+                    os._exit(0)
         else:
             stopper = EarlyStopping(mode = 'lower', patience=args['patience'], filename=args['model_path'])
         return model, loss_criterions, optimizer, scheduler, stopper
@@ -134,13 +139,16 @@ def load_model(args):
         model.load_state_dict(torch.load(args['model_path'])['model_state_dict'])
         return model
 
-def make_labels(hgraphs, labels, masks):
+def pad_atom_distance_matrix(adm_list):
+    max_size = max([adm.shape[0] for adm in adm_list])
+    adm_list = [torch.tensor(np.pad(adm, (0, max_size - adm.shape[0]), 'maximum')).unsqueeze(0).long() for adm in adm_list]
+    return torch.cat(adm_list, dim = 0) 
+
+def make_labels(dgraphs, labels, masks):
     vtemplate_labels = []
     rtemplate_labels = []
-    for hg, label, m in zip(hgraphs, labels, masks):
-        edge_r = hg.number_of_edges(etype='real')
-        edge_v = hg.number_of_edges(etype='virtual')
-        vtemplate_label, rtemplate_label = [0]*(edge_v), [0]*(edge_r)
+    for graph, label, m in zip(dgraphs, labels, masks):
+        vtemplate_label, rtemplate_label = [0]*len(graph['v_bonds']), [0]*len(graph['r_bonds'])
         if m == 1:
             for l in label:
                 edit_type = l[0]
@@ -164,45 +172,31 @@ def get_reactive_template_labels(all_template_labels, masks, top_idxs):
     reactive_labels = [int(y > 0) for y in template_labels]
     return torch.LongTensor(template_labels), torch.LongTensor(reactive_labels), torch.LongTensor(clipped_masks)
 
-def atom_position_matrix(reactants, reagents, max_distance = 6):
-    dms = []
-    smiles = [combine_reactants(r1, r2) for r1, r2 in zip(reactants, reagents)]
-    max_size = max([Chem.MolFromSmiles(s).GetNumAtoms() for s in smiles])
-    for s in smiles:
-        temp = np.ones((max_size, max_size)) * max_distance + 1
-        m = Chem.MolFromSmiles(s)
-        dm = Chem.GetDistanceMatrix(m)
-        dm[dm > 100] = -1
-        dm[dm > max_distance] = max_distance
-        dm[dm == -1] = max_distance + 1
-        temp[:dm.shape[0],:dm.shape[1]] = dm
-        dms.append(torch.tensor(temp).unsqueeze(0).long())
-    return torch.cat(dms, dim = 0)
-
 def collate_molgraphs(data):
-    reactants, reagents, graphs, hgraphs, labels, masks = map(list, zip(*data))
-    true_VT, true_RT = make_labels(hgraphs, labels, masks)
-    hbg = dgl.batch(hgraphs)
-    bg = dgl.batch(graphs)
+    reactants, reagents, fgraphs, dgraphs, labels, masks = map(list, zip(*data))
+    true_VT, true_RT = make_labels(dgraphs, labels, masks)
+    bg = dgl.batch(fgraphs)
     bg.set_n_initializer(dgl.init.zero_initializer)
     bg.set_e_initializer(dgl.init.zero_initializer)
-    dms = atom_position_matrix(reactants, reagents)
-    return reactants, dms, bg, hbg, true_VT, true_RT, masks
+    adm_lists = [graph['atom_distance_matrix'] for graph in dgraphs]
+    adms = pad_atom_distance_matrix(adm_lists)
+    bonds_dicts = {'virtual': [torch.from_numpy(graph['v_bonds']).long() for graph in dgraphs], 'real': [torch.from_numpy(graph['r_bonds']).long() for graph in dgraphs]}
+    return reactants, bg, adms, bonds_dicts, true_VT, true_RT, masks
 
 def collate_molgraphs_test(data):
-    reactants, reagents, graphs, hgraphs = map(list, zip(*data))
-    hbg = dgl.batch(hgraphs)
-    bg = dgl.batch(graphs)
+    reactants, reagents, fgraphs, dgraphs = map(list, zip(*data))
+    bg = dgl.batch(fgraphs)
     bg.set_n_initializer(dgl.init.zero_initializer)
     bg.set_e_initializer(dgl.init.zero_initializer)
-    dms = atom_position_matrix(reactants, reagents)
-    return reactants, reagents, dms, bg, hbg
+    adm_lists = [graph['atom_distance_matrix'] for graph in dgraphs]
+    adms = pad_atom_distance_matrix(adm_lists)
+    bonds_dicts = {'virtual': [torch.from_numpy(graph['v_bonds']).long() for graph in dgraphs], 'real': [torch.from_numpy(graph['r_bonds']).long() for graph in dgraphs]}
+    return products, reactants, bg, adms, bonds_dicts
 
 
-def predict(args, model, rpms, bg, hbg):
-    rpms = rpms.to(args['device'])
+def predict(args, model, bg, adms, bonds_dicts):
+    adms = adms.to(args['device'])
     bg = bg.to(args['device'])
-    hbg = hbg.to(args['device'])
     node_feats = bg.ndata.pop('h').to(args['device'])
     edge_feats = bg.edata.pop('e').to(args['device'])
-    return model(rpms, bg, hbg, node_feats, edge_feats)
+    return model(bg, adms, bonds_dicts, node_feats, edge_feats)

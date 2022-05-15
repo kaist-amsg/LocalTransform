@@ -1,18 +1,15 @@
 from collections import defaultdict
 import pandas as pd
 import sys, os, re
-
 import rdkit
 from rdkit import Chem, RDLogger 
 from rdkit.Chem import rdChemReactions
-
 RDLogger.DisableLog('rdApp.*')
-
 sys.path.append('../')
 from LocalTemplate.template_extractor import extract_from_reaction
 
 def build_template_extractor(args):
-    setting = {'verbose': False, 'use_stereo': False, 'use_symbol': False, 'max_unmap': 5, 'retro': False, 'remote': True}
+    setting = {'verbose': False, 'use_stereo': False, 'use_symbol': False, 'max_unmap': 5, 'retro': False, 'remote': True, 'least_atom_num': 2}
     for k in setting.keys():
         if k in args.keys():
             setting[k] = args[k]
@@ -24,20 +21,11 @@ def get_reaction_template(extractor, rxn, _id = 0):
     result = extractor(rxn)
     return rxn, result
 
-def get_full_template(template, H_change, Charge_change):
+def get_full_template(template, H_change, Charge_change, Chiral_change):
     H_code = ''.join([str(H_change[k+1]) for k in range(len(H_change))])
     Charge_code = ''.join([str(Charge_change[k+1]) for k in range(len(Charge_change))])
-    return template + '_' + H_code + '_' + Charge_code
-
-def get_bonds(smiles):
-    Bs = []
-    mol = Chem.MolFromSmiles(smiles)
-    for bond in mol.GetBonds():
-        bb = bond.GetBeginAtomIdx()
-        eb = bond.GetEndAtomIdx()
-        Bs.append((bb, eb))
-        Bs.append((eb, bb))
-    return Bs
+    Chiral_code = ''.join([str(Chiral_change[k+1]) for k in range(len(Chiral_change))])
+    return '_'.join([template, H_code, Charge_code, Chiral_code])
 
 def extract_templates(args, extractor):
     rxns = {}
@@ -48,6 +36,7 @@ def extract_templates(args, extractor):
     TemplateEdits = {}
     TemplateCs = {}
     TemplateHs = {}
+    TemplateSs = {}
     TemplateFreq = defaultdict(int)
     real_templates = defaultdict(int)
     virtual_templates = defaultdict(int)
@@ -63,23 +52,24 @@ def extract_templates(args, extractor):
                 continue
             template = result['reaction_smarts']
             edits = result['edits']
-            H_change, Charge_change = result['H_change'], result['Charge_change']
-            template_H = get_full_template(template, H_change, Charge_change)
+            H_change, Charge_change, Chiral_change = result['H_change'], result['Charge_change'], result['Chiral_change']
+            template = get_full_template(template, H_change, Charge_change, Chiral_change)
 
-            if template_H not in TemplateHs.keys(): # first come first serve
-                TemplateEdits[template_H] = {edit_type: edits[edit_type][2] for edit_type in edits}
-                TemplateCs[template_H] = Charge_change
-                TemplateHs[template_H] = H_change
+            if template not in TemplateEdits.keys(): # first come first serve
+                TemplateEdits[template] = {edit_type: edits[edit_type][2] for edit_type in edits}
+                TemplateHs[template] = H_change
+                TemplateCs[template] = Charge_change
+                TemplateSs[template] = Chiral_change
                 
-            TemplateFreq[template_H] += 1
+            TemplateFreq[template] += 1
 
             for edit_type in edits:
                 bonds = edits[edit_type][0]
                 if len(bonds) > 0:
                     if edit_type != 'A':
-                        real_templates['%s_%s' % (template_H, edit_type)] += 1
+                        real_templates['%s_%s' % (template, edit_type)] += 1
                     else:
-                        virtual_templates['%s_%s' % (template_H, edit_type)] += 1
+                        virtual_templates['%s_%s' % (template, edit_type)] += 1
                 
         except KeyboardInterrupt:
             print('Interrupted')
@@ -97,7 +87,7 @@ def extract_templates(args, extractor):
     print ('\n total # of template: %s' %  len(TemplateFreq))
     derived_templates = {'real':real_templates, 'virtual': virtual_templates}
         
-    TemplateInfos = pd.DataFrame({'Template': k, 'edit_site':TemplateEdits[k], 'change_H': TemplateHs[k], 'change_C': TemplateCs[k], 'Frequency': TemplateFreq[k]} for k in TemplateHs.keys())
+    TemplateInfos = pd.DataFrame({'Template': k, 'edit_site':TemplateEdits[k], 'change_H': TemplateHs[k], 'change_C': TemplateCs[k], 'change_S': TemplateSs[k], 'Frequency': TemplateFreq[k]} for k in TemplateHs.keys())
     TemplateInfos.to_csv('../data/%s/template_infos.csv' % args['dataset'])
     
     return derived_templates
@@ -130,7 +120,7 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--retro', default=False,  help='Retrosyntheis or forward synthesis (True for retrosnythesis)')
     parser.add_argument('-v', '--verbose', default=False,  help='Verbose during template extraction')
     parser.add_argument('-m', '--max-edit-n', default=8,  help='Maximum number of edit number')
-    parser.add_argument('-stereo', '--use-stereo', default=False,  help='Use stereo info in template extraction')
+    parser.add_argument('-stereo', '--use-stereo', default=True,  help='Use stereo info in template extraction')
     parser.add_argument('-symbol', '--use-symbol', default=False,  help='Use atom symbol in template extraction')
     args = parser.parse_args().__dict__
     extractor = build_template_extractor(args)

@@ -28,8 +28,8 @@ def get_k_predictions(test_id, args):
     tos = time.time()
     for prediction in predictions:
         pred_type, pred_site, pred_template_class, pred_score = eval(prediction) # (edit_type, pred_site, pred_template_class, pred_score)
-        template, H_code, C_code, action = args['template_dicts'][pred_type][pred_template_class]
-        collector.collect(template, H_code, C_code, action, pred_site, pred_score)
+        template, H_code, C_code, S_code, action = args['template_dicts'][pred_type][pred_template_class]
+        collector.collect(template, H_code, C_code, S_code, action, pred_site, pred_score)
         if len(collector.predictions) >= args['top_k'] or time.time() - tos > 10:
             break
     decoded_predictions = ['%s, %.3f' % (k, v['score']) for k, v in sorted(collector.predictions.items(), key=lambda item: -item[1]['score'])]
@@ -44,7 +44,7 @@ def main(args):
     template_df = pd.read_csv('../data/%s/template_infos.csv' % args['dataset'])
     
     args['template_dicts'] = template_dicts
-    args['template_infos'] = {template_df['Template'][i]: {'edit_site': eval(template_df['edit_site'][i]), 'change_H': eval(template_df['change_H'][i]), 'change_C': eval(template_df['change_C'][i])} for i in template_df.index}
+    args['template_infos'] = {template_df['Template'][i]: {'edit_site': eval(template_df['edit_site'][i]), 'change_H': eval(template_df['change_H'][i]), 'change_C': eval(template_df['change_C'][i]), 'change_S': eval(template_df['change_S'][i])} for i in template_df.index}
     
     if args['model_name'] == 'default':
         if args['sep']:

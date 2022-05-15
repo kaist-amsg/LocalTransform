@@ -17,11 +17,11 @@ def run_a_train_epoch(args, epoch, model, data_loader, loss_criterions, optimize
     train_R_loss = 0
     train_T_loss = 0
     for batch_id, batch_data in enumerate(data_loader):
-        smiles, gpms, bg, hbg, true_VT, true_RT, masks = batch_data
+        smiles, bg, adm_lists, bonds_dicts, true_VT, true_RT, masks = batch_data
         if len(smiles) == 1:
             print ('Skip problematic graph')
             continue
-        pred_VT, pred_RT, pred_VR, pred_RR, pred_VI, pred_RI, _ = predict(args, model, gpms, bg, hbg)
+        pred_VT, pred_RT, pred_VR, pred_RR, pred_VI, pred_RI, _ = predict(args, model, bg, adm_lists, bonds_dicts)
         true_VT, true_VR, mask_V = get_reactive_template_labels(true_VT, masks, pred_VI)
         true_RT, true_RR, mask_R = get_reactive_template_labels(true_RT, masks, pred_RI)
         true_VT, true_RT, true_VR, true_RR, mask_V, mask_R = true_VT.to(args['device']), true_RT.to(args['device']), true_VR.to(args['device']), true_RR.to(args['device']), mask_V.to(args['device']), mask_R.to(args['device'])
@@ -45,11 +45,11 @@ def run_an_eval_epoch(args, model, data_loader, loss_criterions):
     val_loss = 0
     with torch.no_grad():
         for batch_id, batch_data in enumerate(data_loader):
-            smiles, gpms, bg, hbg, true_VT, true_RT, masks = batch_data
+            smiles, bg, adm_lists, bonds_dicts, true_VT, true_RT, masks = batch_data
             if len(smiles) == 1:
                 print ('Skip problematic graph')
                 continue
-            pred_VT, pred_RT, pred_VR, pred_RR, pred_VI, pred_RI, _ = predict(args, model, gpms, bg, hbg)
+            pred_VT, pred_RT, pred_VR, pred_RR, pred_VI, pred_RI, _ = predict(args, model, bg, adm_lists, bonds_dicts)
             true_VT, true_VR, mask_V = get_reactive_template_labels(true_VT, masks, pred_VI)
             true_RT, true_RR, mask_R = get_reactive_template_labels(true_RT, masks, pred_RI)
             true_VT, true_RT, true_VR, true_RR, mask_V, mask_R = true_VT.to(args['device']), true_RT.to(args['device']), true_VR.to(args['device']), true_RR.to(args['device']), mask_V.to(args['device']), mask_R.to(args['device'])
@@ -100,7 +100,6 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--patience', type=int, default=3, help='Patience for early stopping')
     parser.add_argument('-w', '--negative-weight', type=float, default=0.5, help='Loss weight for negative labels')
     parser.add_argument('-s', '--sep', default=False, help='Train the model with reagent seperated or not')
-    parser.add_argument('-ps', '--pooling-size', type=int, default=40, help='The pooling size of reactive pooling')
     parser.add_argument('-cl', '--max-clip', type=int, default=20, help='Maximum number of gradient clip')
     parser.add_argument('-lr', '--learning-rate', type=float, default=1e-4, help='Learning rate of optimizer')
     parser.add_argument('-l2', '--weight-decay', type=float, default=1e-6, help='Weight decay of optimizer')

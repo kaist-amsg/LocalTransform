@@ -5,16 +5,16 @@ from collections import defaultdict
 import rdkit
 from rdkit import Chem, RDLogger 
 from rdkit.Chem import rdChemReactions
-
+from rdkit.Chem.rdchem import ChiralType
 RDLogger.DisableLog('rdApp.*')
-
 metals = ['Li', 'Na', 'K', 'Mg', 'Ca', 'Fe', 'Zn', 'Cu', 'Au', 'Ni', 'Cd', 'In', 'Mn', 'Zr', 'Cr', 'Pt', 'Hg', 'Pb']
-    
+chiral_type_map = {ChiralType.CHI_UNSPECIFIED : -1, ChiralType.CHI_TETRAHEDRAL_CW: 1, ChiralType.CHI_TETRAHEDRAL_CCW: 2}
+chiral_type_map_inv = {v:k for k, v in chiral_type_map.items()}
+
 def fit_template_with_mol(smiles, transform, pred_idxs):
     mol = Chem.MolFromSmiles(smiles)
     fit_transform = []
     for i, template in enumerate(transform.split('>>')):
-        fit_template = template
         for k, v in pred_idxs.items():
             a = list(re.findall('\[\*:%s\]' % k, template))
             if len(a) == 0:
@@ -26,8 +26,8 @@ def fit_template_with_mol(smiles, transform, pred_idxs):
             if atom.GetIsAromatic():
                 atom_symbol = atom_symbol.lower()
             b = a.replace('*', atom_symbol)
-            fit_template = fit_template.replace(a, b)
-        fit_transform.append(fit_template)
+            template = template.replace(a, b)
+        fit_transform.append(template)
     return '>>'.join(fit_transform)
 
 def remove_inreactive_fragment(smiles, transform, reactant_map):
@@ -58,7 +58,7 @@ def molsfromsmiles(smiles):
         mols.append(m)
     return mols
 
-def fix_product_CH(reactant_smiles, products, matched_idx, H_change, C_change):
+def fix_product_CHS(reactant_smiles, products, matched_idx, conf_changes):
     fixed_mols = []
     reactants = Chem.MolFromSmiles(reactant_smiles)
     for mol in products:
@@ -68,7 +68,8 @@ def fix_product_CH(reactant_smiles, products, matched_idx, H_change, C_change):
                 reactant_atom = reactants.GetAtomWithIdx(matched_idx[mapno])
                 H_before = reactant_atom.GetNumExplicitHs()
                 C_before = reactant_atom.GetFormalCharge()
-                if mapno not in H_change:
+                S_before = chiral_type_map[reactant_atom.GetChiralTag()]
+                if mapno not in conf_changes['H']:
                     if atom.GetSymbol() in metals:
                         H_after = H_before
                         C_after = C_before + 1
@@ -76,30 +77,37 @@ def fix_product_CH(reactant_smiles, products, matched_idx, H_change, C_change):
                         H_after = H_before + 1
                         C_after = C_before
                 else:
-                    H_after = H_before + H_change[mapno]
-                    C_after = C_before + C_change[mapno]
+                    H_after = H_before + conf_changes['H'][mapno]
+                    C_after = C_before + conf_changes['C'][mapno]
+                    S_after = conf_changes['S'][mapno]
                 if H_after < 0:
                     H_after = 0
                 atom.SetNumExplicitHs(H_after)
                 atom.SetFormalCharge(C_after)
+                if S_after != 0:
+                    atom.SetChiralTag(chiral_type_map_inv[S_after])
         fixed_mols.append(mol)
     return tuple(fixed_mols)
     
-def run_reaction(smiles, template, pred_idxs, inverse_map, H_change, C_change, reactant_map, template_map, change_bond_only, verbose):
+def run_reaction(smiles, template, pred_idxs, inverse_map, conf_changes, reactant_map, template_map, change_bond_only, verbose):
     matched_products = dict()
     if change_bond_only:
         fit_temp = template
     else:
         fit_temp = fit_template_with_mol(smiles, template, pred_idxs)
+    if verbose:
+        print ('Fit_template:', fit_temp)
     reaction = rdChemReactions.ReactionFromSmarts(fit_temp)
     products = reaction.RunReactants(molsfromsmiles(smiles))
     for i, product in enumerate(products):
         matched_idx, left_atoms = check_idx_match(product, reactant_map, template_map)
         common_keys = match_subkeys(pred_idxs, matched_idx, left_atoms, change_bond_only)
         try:
-            product = fix_product_CH(smiles, product, matched_idx, H_change, C_change)
+            product = fix_product_CHS(smiles, product, matched_idx, conf_changes)
             product_smiles = '.'.join(sorted([demap(r) for r in product]))
         except Exception as e:
+            if verbose:
+                print (e)
             continue
         if common_keys:
             reaction_center = {k: inverse_map[v] for k, v in common_keys.items()}
@@ -254,7 +262,7 @@ def get_template_position(transform):
                 template_map[int(num.split(':')[-1])] = i
         return template_map
 
-def apply_template(collector, template, H_change, C_change, pred_idxs, change_bond_only = False, verbose = False):
+def apply_template(collector, template, conf_changes, pred_idxs, change_bond_only = False, verbose = False):
     reduced_smiles, reactant_map, reduced_pred_idxs, inverse_map, template = prepare_template(collector, template, pred_idxs, change_bond_only)
     if verbose:
         print (collector.non_reacts)
@@ -265,7 +273,7 @@ def apply_template(collector, template, H_change, C_change, pred_idxs, change_bo
     template_map = get_template_position(template)
     if verbose:
         print (reactant_map, template_map)
-        print ('template', template, 'pred_idxs', reduced_pred_idxs, 'H_change', H_change, 'C_change', C_change)
-    matched_products, fit_temp = run_reaction(reduced_smiles, template, reduced_pred_idxs, inverse_map, H_change, C_change, reactant_map, template_map, change_bond_only, verbose)
+        print ('template:', template, 'pred_idxs:', reduced_pred_idxs, 'Conf_change:', conf_changes)
+    matched_products, fit_temp = run_reaction(reduced_smiles, template, reduced_pred_idxs, inverse_map, conf_changes, reactant_map, template_map, change_bond_only, verbose)
 
     return matched_products, fit_temp

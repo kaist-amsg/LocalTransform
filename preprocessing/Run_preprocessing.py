@@ -1,12 +1,9 @@
 import os, sys, re, copy
 import pandas as pd
-
 import rdkit 
 from rdkit import Chem, RDLogger 
 from rdkit.Chem import rdChemReactions
-
 RDLogger.DisableLog('rdApp.*')  
-
 sys.path.append('../')
 from LocalTemplate.template_extractor import extract_from_reaction
 from Extract_from_train_data import build_template_extractor, get_reaction_template, get_full_template
@@ -68,10 +65,10 @@ def labeling_dataset(args, split, template_dicts, template_infos, extractor):
             else:
                 reactant_mix = '%s.%s' % (reactant, reagent)
             edit_bonds = {edit_type: edit_bond[0] for edit_type, edit_bond in result['edits'].items()}
-            H_change, Charge_change = result['H_change'], result['Charge_change']
-            template_H = get_full_template(template, H_change, Charge_change)
+            H_change, Charge_change, Chiral_change = result['H_change'], result['Charge_change'], result['Chiral_change']
+            template = get_full_template(template, H_change, Charge_change, Chiral_change)
             
-            if template_H not in template_infos.keys():
+            if template not in template_infos.keys():
                 labels_sep.append(rxn_labels_s)
                 labels_mix.append(rxn_labels_m)
                 frequency.append(0)
@@ -107,14 +104,14 @@ def labeling_dataset(args, split, template_dicts, template_infos, extractor):
                     bonds = edit_bonds[edit_type]
                     for bond in bonds:
                         if edit_type != 'A':
-                            rxn_labels_s.append(('r', real_sites_s.index(bond), template_dicts['real']['%s_%s' % (template_H, edit_type)]))
-                            rxn_labels_m.append(('r', real_sites_m.index(bond), template_dicts['real']['%s_%s' % (template_H, edit_type)]))
+                            rxn_labels_s.append(('r', real_sites_s.index(bond), template_dicts['real']['%s_%s' % (template, edit_type)]))
+                            rxn_labels_m.append(('r', real_sites_m.index(bond), template_dicts['real']['%s_%s' % (template, edit_type)]))
                         else:
-                            rxn_labels_s.append(('v', virtual_sites_s.index(bond), template_dicts['virtual']['%s_%s' % (template_H, edit_type)]))
-                            rxn_labels_m.append(('v', virtual_sites_m.index(bond), template_dicts['virtual']['%s_%s' % (template_H, edit_type)]))      
+                            rxn_labels_s.append(('v', virtual_sites_s.index(bond), template_dicts['virtual']['%s_%s' % (template, edit_type)]))
+                            rxn_labels_m.append(('v', virtual_sites_m.index(bond), template_dicts['virtual']['%s_%s' % (template, edit_type)]))      
                 labels_sep.append(rxn_labels_s)
                 labels_mix.append(rxn_labels_m)
-                frequency.append(template_infos[template_H]['frequency'])
+                frequency.append(template_infos[template]['frequency'])
                         
             except Exception as e:
                 print (i, e)
@@ -170,7 +167,7 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--retro', default=False,  help='Preprcessing for retrosyntheis or forward synthesis (True for retrosnythesis)')
     parser.add_argument('-f', '--force', default=False,  help='Force to preprcess the dataset again')
     parser.add_argument('-v', '--verbose', default=False,  help='Verbose during template extraction')
-    parser.add_argument('-stereo', '--use-stereo', default=False,  help='Use stereo info in template extraction')
+    parser.add_argument('-stereo', '--use-stereo', default=True,  help='Use stereo info in template extraction')
     parser.add_argument('-symbol', '--use-symbol', default=False,  help='Use atom symbol in template extraction')
     parser.add_argument('-t', '--threshold', type=int, default=1,  help='Template refinement threshold')
     parser.add_argument('-min', '--min-template-n', type=int, default=1,  help='Minimum of template frequency')

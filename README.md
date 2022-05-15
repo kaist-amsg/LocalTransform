@@ -1,6 +1,5 @@
 # LocalTransform
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)[![DOI](https://zenodo.org/badge/443246460.svg)](https://zenodo.org/badge/latestdoi/443246460)
 Implementation of organic reactivity prediction with LocalTransform developed by prof. Yousung Jung group at KAIST (contact: ysjn@kaist.ac.kr).
 
 ## Contents
@@ -33,6 +32,7 @@ Create a virtual environment to run the code of LocalTransform.<br>
 Make sure to install pytorch with the cuda version that fits your device.<br>
 This process usually takes few munites to complete.<br>
 ```
+git clone https://github.com/kaist-amsg/LocalTransform.git
 cd LocalTransform
 conda create -c conda-forge -n rdenv  python=3.6 -y
 conda activate rdenv
