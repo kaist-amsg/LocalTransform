@@ -37,7 +37,7 @@ def unpack_atom_feats(bg, hg, atom_feats):
         reactant_feats.append(rg.ndata['h'][:hg.num_nodes()])
     return torch.cat(reactant_feats, dim = 0)
 
-def reactive_pooling(bg, atom_feats, bonds_dict, bond_nets, pooling_net):
+def reactive_pooling(bg, atom_feats, bonds_dict, pooling_nets):
     feat_dim, device = atom_feats.size(-1), atom_feats.device
     react_outputs = {'virtual':[], 'real':[]}
     top_idxs = {'virtual':[], 'real':[]}
@@ -52,7 +52,7 @@ def reactive_pooling(bg, atom_feats, bonds_dict, bond_nets, pooling_net):
         pooled_feats = []
         pooled_bonds = []
         for bond_type in ['virtual', 'real']:
-            bonds, bond_net = bonds_dict[bond_type][i], bond_nets[bond_type]
+            bonds, pooling_net = bonds_dict[bond_type][i], pooling_nets[bond_type]
             n_bonds = bonds.size(0)
             if n_bonds == 0:
                 top_idxs[bond_type].append(empty_longtensor)
@@ -68,7 +68,7 @@ def reactive_pooling(bg, atom_feats, bonds_dict, bond_nets, pooling_net):
 
             top_idxs[bond_type].append(top_idx)
             react_outputs[bond_type].append(react_output[top_idx])
-            pooled_feats.append(bond_net(bond_feats[top_idx]))
+            pooled_feats.append(bond_feats[top_idx])
             pooled_bonds.append(bonds[top_idx])
             
         pooled_feats_batch.append(torch.cat(pooled_feats))
@@ -78,7 +78,7 @@ def reactive_pooling(bg, atom_feats, bonds_dict, bond_nets, pooling_net):
         react_outputs[bond_type] = torch.cat(react_outputs[bond_type], dim = 0)
     return top_idxs, react_outputs, pooled_feats_batch, pooled_bonds_batch
 
-def get_bdm(bonds, max_size):  # bond distance matrix
+def get_bcm(bonds, max_size):  # bond distance matrix
     temp = torch.eye(max_size)
     for i, bond1 in enumerate(bonds):
         for j, bond2 in enumerate(bonds):
@@ -91,9 +91,11 @@ def get_bdm(bonds, max_size):  # bond distance matrix
 def pack_bond_feats(bonds_feats, pooled_bonds):
     masks = [torch.ones(len(feats), dtype=torch.uint8) for feats in bonds_feats]
     padded_feats = pad_sequence(bonds_feats, batch_first=True, padding_value= 0)
-    bdms = [get_bdm(bonds, padded_feats.size(1)) for bonds in pooled_bonds]
+#     bcms = [get_bcm(bonds, padded_feats.size(1)) for bonds in pooled_bonds]
+#     bcms = torch.cat(bcms, dim = 0)
+    bcms = None
     masks = pad_sequence(masks, batch_first=True, padding_value= 0)
-    return padded_feats, masks, torch.cat(bdms, dim = 0)
+    return padded_feats, masks, bcms
 
 def unpack_bond_feats(bond_feats, idxs_dict):
     feats_v = []

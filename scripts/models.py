@@ -29,18 +29,19 @@ class LocalTransform(nn.Module):
                            num_step_message_passing=num_step_message_passing)
         
         self.atom_att = Global_Reactivity_Attention(node_out_feats, attention_heads, attention_layers, 8)
-        self.bond_att = Global_Reactivity_Attention(node_out_feats*2, attention_heads, attention_layers, 2)
+        self.bond_att = Global_Reactivity_Attention(node_out_feats*2, attention_heads, attention_layers, 0)
         
+        self.poolings =  {'virtual': nn.Sequential(
+                                    nn.Linear(node_out_feats*2, node_out_feats),
+                                    self.activation, 
+                                    nn.Dropout(0.2),
+                                    nn.Linear(node_out_feats, 2)), 
+                          'real': nn.Sequential(
+                                    nn.Linear(node_out_feats*2, node_out_feats),
+                                    self.activation, 
+                                    nn.Dropout(0.2),
+                                    nn.Linear(node_out_feats, 2))}
         
-        self.bond_v = nn.Sequential(nn.Dropout(0.2), nn.Linear(node_out_feats*2, node_out_feats*2))
-        self.bond_r = nn.Sequential(nn.Dropout(0.2), nn.Linear(node_out_feats*2, node_out_feats*2))
-        
-        self.pooling =  nn.Sequential(
-                                nn.Linear(node_out_feats*2, node_out_feats),
-                                self.activation, 
-                                nn.Dropout(0.2),
-                                nn.Linear(node_out_feats, 2))
-
         self.output_v =  nn.Sequential(
                             nn.Linear(node_out_feats*2, node_out_feats), 
                             self.activation, 
@@ -52,16 +53,15 @@ class LocalTransform(nn.Module):
                             self.activation, 
                             nn.Dropout(0.2),
                             nn.Linear(node_out_feats, Template_rn+1))
-        self.bond_nets = {'virtual': self.bond_v, 'real': self.bond_r}
                 
     def forward(self, bg, adms, bonds_dict, node_feats, edge_feats):
         
         atom_feats = self.mpnn(bg, node_feats, edge_feats)
         atom_feats, mask = pack_atom_feats(bg, atom_feats)
         atom_feats, atom_attention = self.atom_att(atom_feats, adms, mask)
-        idxs_dict, rout_dict, bonds_feats, bonds = reactive_pooling(bg, atom_feats, bonds_dict, self.bond_nets, self.pooling)
-        bond_feats, mask, bdms = pack_bond_feats(bonds_feats, bonds)
-        bond_feats, bond_attention = self.bond_att(bond_feats, bdms, mask)
+        idxs_dict, rout_dict, bonds_feats, bonds = reactive_pooling(bg, atom_feats, bonds_dict, self.poolings)
+        bond_feats, mask, bcms = pack_bond_feats(bonds_feats, bonds)
+        bond_feats, bond_attention = self.bond_att(bond_feats, bcms, mask)
         feats_v, feats_r = unpack_bond_feats(bond_feats, idxs_dict)
         template_v, template_r = self.output_v(feats_v), self.output_r(feats_r)
         
