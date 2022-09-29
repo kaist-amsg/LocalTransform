@@ -1,6 +1,7 @@
 # LocalTransform
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)[![DOI](https://zenodo.org/badge/443246460.svg)](https://zenodo.org/badge/latestdoi/443246460)<br>
-Implementation of organic reactivity prediction with LocalTransform developed by prof. Yousung Jung group at KAIST (contact: ysjn@kaist.ac.kr).
+Implementation of organic reactivity prediction with LocalTransform developed by Prof. Yousung Jung group at KAIST (contact: ysjn@kaist.ac.kr).<br><br>
+![LocalTranform](https://i.imgur.com/H0mMO5t.png)
 
 ## Contents
 
@@ -10,7 +11,7 @@ Implementation of organic reactivity prediction with LocalTransform developed by
 - [Installation Guide](#installation-guide)
 - [Reproduce the results](#reproduce-the-results)
 - [Demo and human benchmark results](#demo-and-human-benchmark-results)
-- [Citation](#citation)
+- [Publication](#publication)
 - [License](#license)
 
 ## Developer
@@ -111,8 +112,8 @@ See `Synthesis.ipynb` for running instructions and expected output. Human benchm
 It takes approximately one second to predict a product from a set of given reactants.
 
 
-## Citation
-A Generalized Template-Based Graph Neural Network for Accurate Organic Reactivity Prediction, Nat Mach Intell 2022
+## Publication
+[A Generalized Template-Based Graph Neural Network for Accurate Organic Reactivity Prediction, Nat Mach Intell 2022](https://www.nature.com/articles/s42256-022-00526-z)
 
 ## License
 This project is covered under the **Apache 2.0 License**.
