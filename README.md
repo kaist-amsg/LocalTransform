@@ -1,7 +1,7 @@
 # LocalTransform
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)[![DOI](https://zenodo.org/badge/443246460.svg)](https://zenodo.org/badge/latestdoi/443246460)<br>
 Implementation of organic reactivity prediction with LocalTransform developed by Prof. Yousung Jung group at KAIST (contact: ysjn@kaist.ac.kr).<br><br>
-![LocalTranform](https://i.imgur.com/H0mMO5t.png)
+![LocalTransform](https://i.imgur.com/9SA50iK.jpg)
 
 ## Contents
 
