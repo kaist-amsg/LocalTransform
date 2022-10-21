@@ -80,7 +80,7 @@ class USPTODataset(object):
                     self.fgraphs.append(fgraph)
                 if  not self.dgraphs_exist:
                     if self.sep:
-                        self.dgraphs.append({'atom_distance_matrix': get_adm(Chem.MolFromSmiles(s1)), 'bonds':get_bonds(s1)})
+                        self.dgraphs.append({'atom_distance_matrix': get_adm(mol), 'bonds':get_bonds(s1)})
                     else:
                         self.dgraphs.append({'atom_distance_matrix': get_adm(mol), 'bonds':get_bonds(smiles)})
                         
