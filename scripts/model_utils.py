@@ -78,24 +78,28 @@ def reactive_pooling(bg, atom_feats, bonds_dict, pooling_nets):
         react_outputs[bond_type] = torch.cat(react_outputs[bond_type], dim = 0)
     return top_idxs, react_outputs, pooled_feats_batch, pooled_bonds_batch
 
-def get_bcm(bonds, max_size):  # bond distance matrix
-    temp = torch.eye(max_size)
+def get_bdm(bonds, max_size):  # connect/same type:3, connect/diff type:2, no connect/same type:1, no connect/diff type:0
+    type_arr = torch.zeros((max_size, max_size))
+    virtual_size = len(bonds)//2 # approximate
+    type_arr[:virtual_size, :virtual_size] += 2
+    type_arr[virtual_size:, virtual_size:] += 2
+    
+    dist_arr = torch.eye(max_size)
     for i, bond1 in enumerate(bonds):
         for j, bond2 in enumerate(bonds):
             if i >= j: 
                 continue
             if torch.unique(torch.cat([bond1, bond2])).size(0) < 4:  # at least on overlap
-                temp[i][j], temp[j][i] = 1, 1 # connect
-    return temp.unsqueeze(0).long() 
+                dist_arr[i][j], dist_arr[j][i] = 1, 1  # connect
+    bdm = type_arr + dist_arr
+    return bdm.unsqueeze(0).long()
 
 def pack_bond_feats(bonds_feats, pooled_bonds):
     masks = [torch.ones(len(feats), dtype=torch.uint8) for feats in bonds_feats]
     padded_feats = pad_sequence(bonds_feats, batch_first=True, padding_value= 0)
-#     bcms = [get_bcm(bonds, padded_feats.size(1)) for bonds in pooled_bonds]
-#     bcms = torch.cat(bcms, dim = 0)
-    bcms = None
+    bdms = [get_bdm(bonds, padded_feats.size(1)) for bonds in pooled_bonds]
     masks = pad_sequence(masks, batch_first=True, padding_value= 0)
-    return padded_feats, masks, bcms
+    return padded_feats, masks, torch.cat(bdms, dim = 0)
 
 def unpack_bond_feats(bond_feats, idxs_dict):
     feats_v = []
@@ -115,7 +119,7 @@ class MultiHeadAttention(nn.Module):
         self.h = heads
         if self.p_k != 0:
             self.relative_k = nn.Parameter(torch.randn(self.p_k, self.d_k))
-            self.relative_v = nn.Parameter(torch.randn(self.p_k, self.d_k))
+#             self.relative_v = nn.Parameter(torch.randn(self.p_k, self.d_k))
         self.q_linear = nn.Linear(d_model, d_model, bias=False)
         self.k_linear = nn.Linear(d_model, d_model, bias=False)
         self.v_linear = nn.Sequential(
