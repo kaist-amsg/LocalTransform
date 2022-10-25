@@ -15,10 +15,12 @@ from torch.optim import Adam, lr_scheduler
 
 from rdkit import Chem
 from dgl.data.utils import Subset
-from dgllife.utils import WeaveAtomFeaturizer, CanonicalBondFeaturizer, mol_to_bigraph, EarlyStopping
+from dgllife.utils import WeaveAtomFeaturizer, CanonicalBondFeaturizer, mol_to_bigraph
+
 
 from models import LocalTransform
 from dataset import USPTODataset, USPTOTestDataset, combine_reactants
+from stopper import EarlyStopping
 
 def init_featurizer(args):
     atom_types = ['C', 'N', 'O', 'S', 'F', 'Si', 'P', 'Cl', 'Br', 'Mg', 'Na', 'Ca', 'Fe',
@@ -114,16 +116,16 @@ def load_model(args):
         if os.path.exists(args['model_path']):
             user_answer = input('%s exists, want to (a) overlap (b) continue from checkpoint (c) make a new model?' % args['model_path'])
             if user_answer == 'a':
-                stopper = EarlyStopping(mode = 'lower', patience=args['patience'], filename=args['model_path'])
+                stopper = EarlyStopping(args)
                 print ('Overlap exsited model and training a new model...')
             elif user_answer == 'b':
-                stopper = EarlyStopping(mode = 'lower', patience=args['patience'], filename=args['model_path'])
+                stopper = EarlyStopping(args)
                 stopper.load_checkpoint(model)
                 print ('Train from existed model checkpoint...')
             elif user_answer == 'c':
                 model_name = input('Enter new model name: ')
                 args['model_path'] = '../models/%s.pth' % model_name
-                stopper = EarlyStopping(mode = 'lower', patience=args['patience'], filename=args['model_path'])
+                stopper = EarlyStopping(args)
                 print ('Training a new model %s.pth' % model_name)
             else:
                 print ("Input error: please enter a, b or c to specify the model name")
@@ -132,11 +134,11 @@ def load_model(args):
                 except SystemExit:
                     os._exit(0)
         else:
-            stopper = EarlyStopping(mode = 'lower', patience=args['patience'], filename=args['model_path'])
+            stopper = EarlyStopping(args)
         return model, loss_criterions, optimizer, scheduler, stopper
     
     else:
-        model.load_state_dict(torch.load(args['model_path'])['model_state_dict'])
+        model.load_state_dict(torch.load(args['model_path'], map_location=args['device'])['model_state_dict'])
         return model
 
 def pad_atom_distance_matrix(adm_list):
@@ -191,7 +193,7 @@ def collate_molgraphs_test(data):
     adm_lists = [graph['atom_distance_matrix'] for graph in dgraphs]
     adms = pad_atom_distance_matrix(adm_lists)
     bonds_dicts = {'virtual': [torch.from_numpy(graph['v_bonds']).long() for graph in dgraphs], 'real': [torch.from_numpy(graph['r_bonds']).long() for graph in dgraphs]}
-    return products, reactants, bg, adms, bonds_dicts
+    return reactants, reagents, bg, adms, bonds_dicts
 
 
 def predict(args, model, bg, adms, bonds_dicts):
