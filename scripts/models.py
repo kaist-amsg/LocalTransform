@@ -29,7 +29,7 @@ class LocalTransform(nn.Module):
                            num_step_message_passing=num_step_message_passing)
         
         self.atom_att = Global_Reactivity_Attention(node_out_feats, attention_heads, attention_layers, 8)
-        self.bond_att = Global_Reactivity_Attention(node_out_feats*2, attention_heads, attention_layers, 0)
+        self.bond_att = Global_Reactivity_Attention(node_out_feats*2, attention_heads, attention_layers, 4)
         
         self.poolings =  {'virtual': nn.Sequential(
                                     nn.Linear(node_out_feats*2, node_out_feats),
