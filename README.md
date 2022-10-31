@@ -3,6 +3,10 @@
 Implementation of organic reactivity prediction with LocalTransform developed by Prof. Yousung Jung group at KAIST (contact: ysjn@kaist.ac.kr).<br><br>
 ![LocalTransform](https://i.imgur.com/9SA50iK.jpg)
 
+## Model size decrease announcement (2022.10.31)
+We slightly modified the model architechture to decrease the model size from 59MB to 36.4MB so we can upload to GitHub repo by decrease to size of bond feature from 512 to 256 through bond_net (see `scripts/model.py` for more detail). This modification also accelerate the training process.
+Also we fix few part of code to enable smooth implementation on cpu.
+
 ## Contents
 
 - [Developer](#developer)
@@ -85,14 +89,14 @@ and run the following to train the model with reagent seperated or not (default:
 ```
 python Train.py -sep True
 ```
-The trained model will be saved at ` LocalTransform/models/LocalTransform_sep.pth`<br>
+The trained model will be saved at `LocalTransform/models/LocalTransform_sep.pth`<br>
 
 ### [4] Test LocalTransform model
 To use the model to test on test set, simply run 
 ```
 python Test.py -sep True
 ```
-to get the raw prediction file saved at ` LocalTransform/outputs/raw_prediction/LocalTransform_sep.txt`<br>
+to get the raw prediction file saved at `LocalTransform/outputs/raw_prediction/LocalTransform_sep.txt`<br>
 Finally you can get the reactants of each prediciton by decoding the raw prediction file
 ```
 python Decode_predictions.py -sep True
@@ -109,7 +113,7 @@ the top-k accuracy will be calculated from the files generated at step [4]
 
 ## Demo and human benchmark results
 See `Synthesis.ipynb` for running instructions and expected output. Human benchmark results is also shown at the end of the notebook.<br>
-It takes approximately one second to predict a product from a set of given reactants.
+It takes approximately 0.5 second to predict a product from a set of given reactants.
 
 
 ## Publication

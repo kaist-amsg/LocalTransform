@@ -37,7 +37,7 @@ def unpack_atom_feats(bg, hg, atom_feats):
         reactant_feats.append(rg.ndata['h'][:hg.num_nodes()])
     return torch.cat(reactant_feats, dim = 0)
 
-def reactive_pooling(bg, atom_feats, bonds_dict, pooling_nets):
+def reactive_pooling(bg, atom_feats, bonds_dict, pooling_nets, bond_nets):
     feat_dim, device = atom_feats.size(-1), atom_feats.device
     react_outputs = {'virtual':[], 'real':[]}
     top_idxs = {'virtual':[], 'real':[]}
@@ -52,7 +52,8 @@ def reactive_pooling(bg, atom_feats, bonds_dict, pooling_nets):
         pooled_feats = []
         pooled_bonds = []
         for bond_type in ['virtual', 'real']:
-            bonds, pooling_net = bonds_dict[bond_type][i], pooling_nets[bond_type]
+            bonds = bonds_dict[bond_type][i]
+            pooling_net, bond_net = pooling_nets[bond_type], bond_nets[bond_type]
             n_bonds = bonds.size(0)
             if n_bonds == 0:
                 top_idxs[bond_type].append(empty_longtensor)
@@ -68,7 +69,7 @@ def reactive_pooling(bg, atom_feats, bonds_dict, pooling_nets):
 
             top_idxs[bond_type].append(top_idx)
             react_outputs[bond_type].append(react_output[top_idx])
-            pooled_feats.append(bond_feats[top_idx])
+            pooled_feats.append(bond_net(bond_feats[top_idx]))
             pooled_bonds.append(bonds[top_idx])
             
         pooled_feats_batch.append(torch.cat(pooled_feats))
@@ -78,21 +79,15 @@ def reactive_pooling(bg, atom_feats, bonds_dict, pooling_nets):
         react_outputs[bond_type] = torch.cat(react_outputs[bond_type], dim = 0)
     return top_idxs, react_outputs, pooled_feats_batch, pooled_bonds_batch
 
-def get_bdm(bonds, max_size):  # connect/same type:3, connect/diff type:2, no connect/same type:1, no connect/diff type:0
-    type_arr = torch.zeros((max_size, max_size))
-    virtual_size = len(bonds)//2 # approximate
-    type_arr[:virtual_size, :virtual_size] += 2
-    type_arr[virtual_size:, virtual_size:] += 2
-    
-    dist_arr = torch.eye(max_size)
+def get_bdm(bonds, max_size):  # bond distance matrix
+    temp = torch.eye(max_size)
     for i, bond1 in enumerate(bonds):
         for j, bond2 in enumerate(bonds):
             if i >= j: 
                 continue
             if torch.unique(torch.cat([bond1, bond2])).size(0) < 4:  # at least on overlap
-                dist_arr[i][j], dist_arr[j][i] = 1, 1  # connect
-    bdm = type_arr + dist_arr
-    return bdm.unsqueeze(0).long()
+                temp[i][j], temp[j][i] = 1, 1 # connect
+    return temp.unsqueeze(0).long() 
 
 def pack_bond_feats(bonds_feats, pooled_bonds):
     masks = [torch.ones(len(feats), dtype=torch.uint8) for feats in bonds_feats]
@@ -119,7 +114,6 @@ class MultiHeadAttention(nn.Module):
         self.h = heads
         if self.p_k != 0:
             self.relative_k = nn.Parameter(torch.randn(self.p_k, self.d_k))
-#             self.relative_v = nn.Parameter(torch.randn(self.p_k, self.d_k))
         self.q_linear = nn.Linear(d_model, d_model, bias=False)
         self.k_linear = nn.Linear(d_model, d_model, bias=False)
         self.v_linear = nn.Sequential(
