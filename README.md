@@ -113,7 +113,6 @@ the top-k accuracy will be calculated from the files generated at step [4]
 
 ## Demo and human benchmark results
 See `Synthesis.ipynb` for running instructions and expected output. Human benchmark results is also shown at the end of the notebook.<br>
-It takes approximately 0.5 second to predict a product from a set of given reactants.
 
 
 ## Publication
