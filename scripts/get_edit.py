@@ -81,7 +81,7 @@ def write_edits(args, model, test_loader):
                 print('\rWriting test molecule batch %s/%s' % (batch_id, len(test_loader)), end='', flush=True)
                 for i, (reactant, reagent) in enumerate(zip(reactants, reagents)):
                     end_v, end_r = v_sep[i], r_sep[i]
-                    virtual_bonds, real_bonds = bonds_dicts['virtual'][i], bonds_dicts['real'][i]
+                    virtual_bonds, real_bonds = bonds_dicts['virtual'][i].numpy(), bonds_dicts['real'][i].numpy()
                     pred_vi, pred_ri = pred_VI[i].cpu(), pred_RI[i].cpu()
                     pred_v, pred_r = pred_VT[start_v:end_v], pred_RT[start_r:end_r]
                     
