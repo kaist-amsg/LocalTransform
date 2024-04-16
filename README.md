@@ -1,6 +1,6 @@
 # LocalTransform
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)[![DOI](https://zenodo.org/badge/443246460.svg)](https://zenodo.org/badge/latestdoi/443246460)<br>
-Implementation of organic reactivity prediction with LocalTransform developed by Prof. Yousung Jung group at KAIST (contact: ysjn@kaist.ac.kr).<br><br>
+Implementation of organic reactivity prediction with LocalTransform developed by Prof. Yousung Jung group at KAIST (now moved to SNU, contact:  yousung.jung@snu.ac.kr).<br><br>
 ![LocalTransform](https://i.imgur.com/9SA50iK.jpg)
 
 ## Model size decrease announcement (2022.10.31)
@@ -19,7 +19,7 @@ Also we fix few part of code to enable smooth implementation on cpu.
 - [License](#license)
 
 ## Developer
-Shuan Chen (shuankaist@kaist.ac.kr)<br>
+Shuan Chen (shuan.micc@gmail.com)<br>
 
 ## OS Requirements
 This repository has been tested on both **Linux** and **Windows** operating systems.
