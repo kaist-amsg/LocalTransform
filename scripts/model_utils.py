@@ -70,7 +70,7 @@ def reactive_pooling(bg, atom_feats, bonds_dict, pooling_nets, bond_nets):
             top_idxs[bond_type].append(top_idx)
             react_outputs[bond_type].append(react_output[top_idx])
             pooled_feats.append(bond_net(bond_feats[top_idx]))
-            pooled_bonds.append(bonds[top_idx])
+            pooled_bonds.append(bonds[top_idx.cpu()])
             
         pooled_feats_batch.append(torch.cat(pooled_feats))
         pooled_bonds_batch.append(torch.cat(pooled_bonds))
@@ -135,8 +135,8 @@ class MultiHeadAttention(nn.Module):
         nn.init.constant_(self.gating.weight, 0.)
         nn.init.constant_(self.gating.bias, 1.)
         
-    def one_hot_embedding(self, labels):
-        y = torch.eye(self.p_k)
+    def one_hot_embedding(self, labels, device):
+        y = torch.eye(self.p_k).to(device)
         return y[labels]
                 
     def forward(self, x, gpm, mask=None):
@@ -153,7 +153,7 @@ class MultiHeadAttention(nn.Module):
         if self.p_k == 0:
             attn = attn1/math.sqrt(self.d_k)
         else:
-            gpms = self.one_hot_embedding(gpm.unsqueeze(1).repeat(1, self.h, 1, 1)).to(x.device)
+            gpms = self.one_hot_embedding(gpm.unsqueeze(1).repeat(1, self.h, 1, 1), x.device)
             attn2 = torch.matmul(q1, self.relative_k.transpose(0, 1))
             attn2 = torch.matmul(gpms, attn2.unsqueeze(-1)).squeeze(-1)
             attn = (attn1 + attn2) /math.sqrt(self.d_k)
