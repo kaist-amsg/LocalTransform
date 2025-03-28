@@ -3,6 +3,9 @@
 Implementation of organic reactivity prediction with LocalTransform developed by Prof. Yousung Jung group at KAIST (now moved to SNU, contact:  yousung.jung@snu.ac.kr).<br><br>
 ![LocalTransform](https://i.imgur.com/9SA50iK.jpg)
 
+## Remove code and license announcement (2025.03.28)
+Part of the code and license are removed.
+
 ## Model size decrease announcement (2022.10.31)
 We slightly modified the model architechture to decrease the model size from 59MB to 36.4MB so we can upload to GitHub repo by decrease to size of bond feature from 512 to 256 through bond_net (see `scripts/model.py` for more detail). This modification also accelerate the training process.
 Also we fix few part of code to enable smooth implementation on cpu.
